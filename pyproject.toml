@@ -21,6 +21,7 @@ station = [
   "piper_sdk @ git+https://github.com/agilexrobotics/piper_sdk.git",
 ]
 policy = ["websockets>=13.1", "torch>=2.4"]
+policy-lerobot = ["websockets>=13.1", "torch>=2.4", "lerobot>=0.4", "huggingface_hub>=0.27", "Pillow>=10.4"]
 ui = ["fastapi>=0.115", "uvicorn[standard]>=0.30"]
 dev = ["pytest>=8.3", "ruff>=0.8"]
 

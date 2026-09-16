@@ -1,2 +1,23 @@
 # The address of the PC that owns the Piper. Never expose this port publicly.
 station_url: ws://192.168.55.100:8765
+# hanoi-v1 is a Pi0.5 checkpoint. Set its natural-language task here before run.
+task: ""
+device: cuda
+schema_version: 1
+# Pi0.5 config.json does not always declare the semantic state ordering. This
+# explicit profile is checked against the PC station before action is enabled.
+state_names:
+  - left_joint_1
+  - left_joint_2
+  - left_joint_3
+  - left_joint_4
+  - left_joint_5
+  - left_joint_6
+  - left_gripper
+  - right_joint_1
+  - right_joint_2
+  - right_joint_3
+  - right_joint_4
+  - right_joint_5
+  - right_joint_6
+  - right_gripper

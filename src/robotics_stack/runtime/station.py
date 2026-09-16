@@ -35,6 +35,8 @@ class RobotStation:
         *,
         watchdog_ms: float = 400.0,
         action_age_ms: float = 250.0,
+        motion_mode: str = "direct",
+        stream_rate_hz: float = 100.0,
         cameras: CameraHub | None = None,
         home_action: tuple[float, ...] | None = None,
     ):
@@ -42,6 +44,10 @@ class RobotStation:
         self.schema = schema
         self.supervisor = MotionSupervisor(schema, action_age_ms)
         self.watchdog_ms = watchdog_ms
+        if motion_mode not in {"direct", "bounded"}:
+            raise ValueError("motion_mode must be either 'direct' or 'bounded'")
+        self.motion_mode = motion_mode
+        self.stream_rate_hz = stream_rate_hz
         self.cameras = cameras
         self.home_action = home_action
         self.policy_connected = False
@@ -58,8 +64,9 @@ class RobotStation:
         try:
             if self.cameras is not None:
                 self.cameras.connect()
-            self._streamer = MotionStreamer(self.robot, self.schema)
-            self._streamer.start()
+            if self.motion_mode == "bounded":
+                self._streamer = MotionStreamer(self.robot, self.schema, self.stream_rate_hz)
+                self._streamer.start()
             self.supervisor.connected()
         except BaseException:
             self.disconnect()
@@ -96,6 +103,8 @@ class RobotStation:
     def pause(self, reason: str = "operator pause") -> None:
         if self._streamer is not None:
             self._streamer.hold()
+        else:
+            self.robot.hold()
         self.supervisor.pause(reason)
 
     def home(self) -> None:
@@ -103,12 +112,15 @@ class RobotStation:
         if self.home_action is None:
             raise RuntimeError("home is not configured for this Piper rig")
         if self._streamer is None:
-            raise RuntimeError("motion streamer is unavailable")
-        self._streamer.set_target(self.home_action)
+            self.robot.set_target(self.home_action)
+        else:
+            self._streamer.set_target(self.home_action)
 
     def clear_fault(self) -> None:
         if self._streamer is not None:
             self._streamer.hold()
+        else:
+            self.robot.hold()
         self.supervisor.reset_fault()
 
     def status(self) -> StationStatus:
@@ -200,8 +212,9 @@ class RobotStation:
             verdict = self.supervisor.validate(action)
             if verdict.accepted:
                 if self._streamer is None:
-                    raise RuntimeError("motion streamer is unavailable")
-                self._streamer.set_target(action.values)
+                    self.robot.set_target(action.values)
+                else:
+                    self._streamer.set_target(action.values)
                 self._accepted_actions += 1
             else:
                 self._rejected_actions += 1

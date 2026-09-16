@@ -17,7 +17,7 @@ fi
 
 .venv/bin/python -m pip install --upgrade pip
 if [[ "$1" == "all" ]]; then
-  .venv/bin/python -m pip install -e ".[station,policy,ui,dev]"
+  .venv/bin/python -m pip install -e ".[station,policy-lerobot,ui,dev]"
 else
   extras=$(IFS=,; echo "$*")
   .venv/bin/python -m pip install -e ".[${extras}]"

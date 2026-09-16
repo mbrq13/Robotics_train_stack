@@ -5,13 +5,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from pathlib import Path
 
 from robotics_stack.evaluation.replay import evaluate_state_mlp
 from robotics_stack.hardware.cameras import CameraHub
 from robotics_stack.hardware.fake import FakeRobot
 from robotics_stack.hardware.piper import BiPiper
 from robotics_stack.learning.train import train_state_mlp
+from robotics_stack.policy.checkpoints import inspect_checkpoint
 from robotics_stack.runtime.config import load_camera_configs, load_station_config, load_yaml
 from robotics_stack.runtime.policy_agent import run_policy_agent
 from robotics_stack.runtime.station import RobotStation
@@ -26,6 +26,8 @@ def _station(args: argparse.Namespace) -> None:
         schema,
         watchdog_ms=float(station_cfg.get("watchdog_ms", 400)),
         action_age_ms=float(station_cfg.get("action_age_ms", 250)),
+        motion_mode=str(station_cfg.get("motion_mode", "direct")),
+        stream_rate_hz=float(station_cfg.get("stream_rate_hz", 100)),
         cameras=cameras,
         home_action=tuple(float(value) for value in station_cfg["home_action"])
         if "home_action" in station_cfg
@@ -77,8 +79,7 @@ def _train(args: argparse.Namespace) -> None:
 
 
 def _inspect(args: argparse.Namespace) -> None:
-    value = json.loads((Path(args.checkpoint) / "manifest.json").read_text(encoding="utf-8"))
-    print(json.dumps(value, indent=2))
+    print(json.dumps(inspect_checkpoint(args.checkpoint).__dict__, indent=2))
 
 
 def main() -> None:
@@ -111,19 +112,23 @@ def main() -> None:
     args.func(args)
 
 
-def _policy_url(path: str) -> str:
-    from robotics_stack.runtime.config import load_yaml
-
-    return str(load_yaml(path)["station_url"])
-
-
 def _evaluate(args: argparse.Namespace) -> None:
     report = evaluate_state_mlp(args.checkpoint, args.data)
     print(json.dumps(report.__dict__, indent=2))
 
 
 def _policy(args: argparse.Namespace) -> None:
-    asyncio.run(run_policy_agent(_policy_url(args.config), args.checkpoint))
+    config = load_yaml(args.config)
+    asyncio.run(
+        run_policy_agent(
+            str(config["station_url"]),
+            args.checkpoint,
+            task=str(config.get("task", "")),
+            device=str(config.get("device", "cuda")),
+            schema_version=int(config.get("schema_version", 1)),
+            state_names=tuple(str(name) for name in config.get("state_names", [])),
+        )
+    )
 
 
 if __name__ == "__main__":

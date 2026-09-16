@@ -33,3 +33,23 @@ Start the station without `--fake` only after CAN activation and gripper calibra
 `Home` remains disabled until a reviewed `station.home_action` is configured.
 
 The station enters pause when the policy link disappears or action traffic stops. It never resumes motion on reconnect; arm and start are operator actions.
+
+## Pi0.5 / LeRobot checkpoint preflight
+
+On the Thor, install `policy-lerobot`, set the task instruction in
+`configs/thor_policy.yaml`, and inspect the artifact before connecting:
+
+```bash
+rstack inspect NONHUMAN-RESEARCH/hanoi-v1
+```
+
+The descriptor must show 14 state values, 14 action values and the `left`,
+`top`, `right` cameras. The first real connection repeats that compatibility
+check against the live station. A checkpoint that requests a missing camera,
+uses a different feature order, or receives an image with unexpected shape is
+rejected; it cannot silently drive a differently wired Piper.
+
+Pi0.5's public config may omit state feature names. For that case,
+`thor_policy.yaml` explicitly records the state order used by this Piper and
+the worker rejects a station whose order differs. Review it against the
+checkpoint's training data before a real run.
