@@ -1,0 +1,67 @@
+schema:
+  name: bipiper-v1
+  version: 1
+  control_hz: 30
+  action_names:
+    - left_joint_1
+    - left_joint_2
+    - left_joint_3
+    - left_joint_4
+    - left_joint_5
+    - left_joint_6
+    - left_gripper
+    - right_joint_1
+    - right_joint_2
+    - right_joint_3
+    - right_joint_4
+    - right_joint_5
+    - right_joint_6
+    - right_gripper
+  state_names:
+    - left_joint_1
+    - left_joint_2
+    - left_joint_3
+    - left_joint_4
+    - left_joint_5
+    - left_joint_6
+    - left_gripper
+    - right_joint_1
+    - right_joint_2
+    - right_joint_3
+    - right_joint_4
+    - right_joint_5
+    - right_joint_6
+    - right_gripper
+  camera_names: [left, top, right]
+  # Replace joint ranges with limits validated for this specific Piper rig.
+  joint_limits:
+    - {minimum: -2.8, maximum: 2.8, max_speed: 1.57, max_acceleration: 4.19}
+    - {minimum: -2.0, maximum: 2.0, max_speed: 1.57, max_acceleration: 4.19}
+    - {minimum: -2.8, maximum: 2.8, max_speed: 1.57, max_acceleration: 4.19}
+    - {minimum: -3.1, maximum: 3.1, max_speed: 1.57, max_acceleration: 4.19}
+    - {minimum: -2.8, maximum: 2.8, max_speed: 1.57, max_acceleration: 4.19}
+    - {minimum: -3.1, maximum: 3.1, max_speed: 1.57, max_acceleration: 4.19}
+    - {minimum: 0.0, maximum: 1.0, max_speed: 2.0, max_acceleration: 5.0}
+    - {minimum: -2.8, maximum: 2.8, max_speed: 1.57, max_acceleration: 4.19}
+    - {minimum: -2.0, maximum: 2.0, max_speed: 1.57, max_acceleration: 4.19}
+    - {minimum: -2.8, maximum: 2.8, max_speed: 1.57, max_acceleration: 4.19}
+    - {minimum: -3.1, maximum: 3.1, max_speed: 1.57, max_acceleration: 4.19}
+    - {minimum: -2.8, maximum: 2.8, max_speed: 1.57, max_acceleration: 4.19}
+    - {minimum: -3.1, maximum: 3.1, max_speed: 1.57, max_acceleration: 4.19}
+    - {minimum: 0.0, maximum: 1.0, max_speed: 2.0, max_acceleration: 5.0}
+
+station:
+  host: 0.0.0.0
+  port: 8765
+  ui_host: 0.0.0.0
+  ui_port: 8080
+  watchdog_ms: 400
+  action_age_ms: 250
+
+piper:
+  left_port: can0
+  right_port: can1
+  gripper_min_microm: 0
+  gripper_max_microm: 70000
+  gripper_effort: 1000
+  enable_timeout_s: 10

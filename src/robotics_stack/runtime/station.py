@@ -1,0 +1,176 @@
+"""The PC-side agent: the only process allowed to command the Piper."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+from dataclasses import dataclass
+from typing import Any
+
+from robotics_stack.contracts import Observation, RobotSchema
+from robotics_stack.control.streamer import MotionStreamer
+from robotics_stack.control.supervisor import MotionSupervisor, RunState
+from robotics_stack.hardware.base import RobotDriver
+from robotics_stack.link.messages import observation_message, parse_action
+
+
+@dataclass
+class StationStatus:
+    state: str
+    session_id: str | None
+    policy_connected: bool
+    last_fault: str | None
+    accepted_actions: int
+    rejected_actions: int
+
+
+class RobotStation:
+    def __init__(
+        self,
+        robot: RobotDriver,
+        schema: RobotSchema,
+        *,
+        watchdog_ms: float = 400.0,
+        action_age_ms: float = 250.0,
+    ):
+        self.robot = robot
+        self.schema = schema
+        self.supervisor = MotionSupervisor(schema, action_age_ms)
+        self.watchdog_ms = watchdog_ms
+        self.policy_connected = False
+        self._observation_id = 0
+        self._accepted_actions = 0
+        self._rejected_actions = 0
+        self._last_rejection: str | None = None
+        self._connection: Any | None = None
+        self._send_lock = asyncio.Lock()
+        self._streamer: MotionStreamer | None = None
+
+    def connect(self) -> None:
+        self.robot.connect()
+        self._streamer = MotionStreamer(self.robot, self.schema)
+        self._streamer.start()
+        self.supervisor.connected()
+
+    def disconnect(self) -> None:
+        try:
+            if self._streamer is not None:
+                self._streamer.hold()
+        finally:
+            if self._streamer is not None:
+                self._streamer.stop()
+                self._streamer = None
+            self.robot.disconnect()
+            self.supervisor.state = RunState.DISCONNECTED
+
+    def validate_hardware(self) -> None:
+        if self.supervisor.state == RunState.DISCONNECTED:
+            raise RuntimeError("connect the robot before validation")
+        observation = self.robot.observation()
+        self.schema.validate_action(observation)
+
+    def arm(self) -> str:
+        self.validate_hardware()
+        return self.supervisor.arm()
+
+    def start(self) -> None:
+        self.supervisor.start()
+
+    def pause(self, reason: str = "operator pause") -> None:
+        if self._streamer is not None:
+            self._streamer.hold()
+        self.supervisor.pause(reason)
+
+    def home(self) -> None:
+        self.pause("home requested")
+        self.robot.home()
+
+    def clear_fault(self) -> None:
+        if self._streamer is not None:
+            self._streamer.hold()
+        self.supervisor.reset_fault()
+
+    def status(self) -> StationStatus:
+        return StationStatus(
+            state=self.supervisor.state.value,
+            session_id=self.supervisor.session_id,
+            policy_connected=self.policy_connected,
+            last_fault=self.supervisor.last_fault or self._last_rejection,
+            accepted_actions=self._accepted_actions,
+            rejected_actions=self._rejected_actions,
+        )
+
+    async def serve(self, host: str, port: int) -> None:
+        try:
+            from websockets.asyncio.server import serve
+        except ImportError as exc:
+            raise RuntimeError("install the station extra to run the station") from exc
+        async with serve(self._handle_policy, host, port, max_size=8 * 1024 * 1024):
+            await asyncio.Future()
+
+    async def _handle_policy(self, websocket: Any) -> None:
+        if self._connection is not None:
+            await websocket.close(code=4001, reason="one policy agent is allowed")
+            return
+        self._connection = websocket
+        self.policy_connected = True
+        try:
+            hello = json.loads(await asyncio.wait_for(websocket.recv(), timeout=5.0))
+            if hello.get("type") != "hello" or int(hello.get("schema_version", -1)) != self.schema.version:
+                raise ValueError("policy schema does not match station")
+            await self._send(
+                {
+                    "type": "hello",
+                    "schema": self.schema.to_dict(),
+                    "state": self.supervisor.state.value,
+                    "session_id": self.supervisor.session_id,
+                }
+            )
+            await asyncio.gather(self._observation_loop(), self._receive_loop(websocket))
+        except Exception as exc:
+            self.supervisor.fault(f"policy link failed: {exc}")
+            self.robot.hold()
+        finally:
+            self.policy_connected = False
+            self._connection = None
+            if self.supervisor.state == RunState.RUNNING:
+                self.pause("policy link disconnected")
+
+    async def _observation_loop(self) -> None:
+        while self._connection is not None:
+            if self.supervisor.watchdog_expired(self.watchdog_ms):
+                self.pause("policy action watchdog expired")
+            if self.supervisor.state == RunState.RUNNING:
+                self._observation_id += 1
+                observation = Observation(
+                    observation_id=self._observation_id,
+                    station_monotonic_ns=time.monotonic_ns(),
+                    state=self.robot.observation(),
+                )
+                message = observation_message(observation)
+                message["session_id"] = self.supervisor.session_id
+                await self._send(message)
+            await asyncio.sleep(1.0 / self.schema.control_hz)
+
+    async def _receive_loop(self, websocket: Any) -> None:
+        async for raw_message in websocket:
+            message = json.loads(raw_message)
+            if message.get("type") != "action":
+                continue
+            action = parse_action(message)
+            verdict = self.supervisor.validate(action)
+            if verdict.accepted:
+                if self._streamer is None:
+                    raise RuntimeError("motion streamer is unavailable")
+                self._streamer.set_target(action.values)
+                self._accepted_actions += 1
+            else:
+                self._rejected_actions += 1
+                self._last_rejection = verdict.reason
+
+    async def _send(self, message: dict[str, Any]) -> None:
+        if self._connection is None:
+            return
+        async with self._send_lock:
+            await self._connection.send(json.dumps(message))

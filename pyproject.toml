@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "robotics-train-stack"
+version = "0.1.0"
+description = "A clean PC-to-Thor robotics training and deployment stack."
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+dependencies = ["numpy>=1.26", "PyYAML>=6.0"]
+
+[project.scripts]
+rstack = "robotics_stack.cli:main"
+
+[project.optional-dependencies]
+station = [
+  "websockets>=13.1",
+  "opencv-python>=4.10",
+  "piper_sdk @ git+https://github.com/agilexrobotics/piper_sdk.git",
+]
+policy = ["websockets>=13.1", "torch>=2.4"]
+ui = ["fastapi>=0.115", "uvicorn[standard]>=0.30"]
+dev = ["pytest>=8.3", "ruff>=0.8"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/robotics_stack"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
