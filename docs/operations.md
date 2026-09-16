@@ -28,4 +28,8 @@ Open the console, select **Validate**, then **Arm**, then **Start**. The fake ro
 5. Start with a checkpoint previously approved in dry-run.
 6. Use **Hold / Pause** for controlled stopping. Use the physical emergency stop for immediate physical hazards.
 
+Start the station without `--fake` only after CAN activation and gripper calibration are verified. Use the Piper SDK activation procedure appropriate for the installed hardware, and verify both configured interfaces are `UP` at the required bitrate first.
+
+`Home` remains disabled until a reviewed `station.home_action` is configured.
+
 The station enters pause when the policy link disappears or action traffic stops. It never resumes motion on reconnect; arm and start are operator actions.

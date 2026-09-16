@@ -19,6 +19,7 @@ The built-in `state_mlp` policy trains from an NPZ with `states` and `actions` a
 ```bash
 rstack train --data demos.npz --output artifacts/my-policy --epochs 100
 rstack inspect artifacts/my-policy
+rstack evaluate --checkpoint artifacts/my-policy --data demos.npz
 ```
 
 ## Deploy
@@ -36,6 +37,8 @@ rstack policy --config configs/thor_policy.yaml --checkpoint artifacts/my-policy
 ```
 
 Open `http://PC_IP:8080` for the operations console. The robot remains paused until the operator validates and arms it. See [docs/operations.md](docs/operations.md) before using physical hardware.
+
+`demos.npz` must contain float arrays named `states` and `actions`, each shaped `[samples, 14]` for the included bimanual Piper schema. See [docs/training.md](docs/training.md).
 
 ## Guarantees and scope
 

@@ -53,7 +53,12 @@ class CameraHub:
                 capture.release()
                 raise RuntimeError(f"camera {config.name} cannot open {config.device!r}")
             self._captures[config.name] = capture
-            thread = threading.Thread(target=self._capture_loop, args=(config,), daemon=True, name=f"camera-{config.name}")
+            thread = threading.Thread(
+                target=self._capture_loop,
+                args=(config,),
+                daemon=True,
+                name=f"camera-{config.name}",
+            )
             thread.start()
             self._threads.append(thread)
 
@@ -76,7 +81,9 @@ class CameraHub:
             return {
                 config.name: CameraHealth(
                     connected=config.name in self._frames,
-                    age_ms=(now - self._timestamps[config.name]) / 1_000_000 if config.name in self._timestamps else None,
+                    age_ms=(now - self._timestamps[config.name]) / 1_000_000
+                    if config.name in self._timestamps
+                    else None,
                     error=self._errors.get(config.name),
                 )
                 for config in self.cameras
@@ -102,7 +109,9 @@ class CameraHub:
                     self._errors[config.name] = "frame capture failed"
                 self._stop.wait(0.05)
                 continue
-            ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, config.jpeg_quality])
+            ok, encoded = cv2.imencode(
+                ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, config.jpeg_quality]
+            )
             if not ok:
                 with self._lock:
                     self._errors[config.name] = "JPEG encoding failed"

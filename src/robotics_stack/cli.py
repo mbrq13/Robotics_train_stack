@@ -7,8 +7,9 @@ import asyncio
 import json
 from pathlib import Path
 
-from robotics_stack.hardware.fake import FakeRobot
+from robotics_stack.evaluation.replay import evaluate_state_mlp
 from robotics_stack.hardware.cameras import CameraHub
+from robotics_stack.hardware.fake import FakeRobot
 from robotics_stack.hardware.piper import BiPiper
 from robotics_stack.learning.train import train_state_mlp
 from robotics_stack.runtime.config import load_camera_configs, load_station_config, load_yaml
@@ -26,6 +27,9 @@ def _station(args: argparse.Namespace) -> None:
         watchdog_ms=float(station_cfg.get("watchdog_ms", 400)),
         action_age_ms=float(station_cfg.get("action_age_ms", 250)),
         cameras=cameras,
+        home_action=tuple(float(value) for value in station_cfg["home_action"])
+        if "home_action" in station_cfg
+        else None,
     )
     station.connect()
     try:
@@ -35,7 +39,11 @@ def _station(args: argparse.Namespace) -> None:
 
 
 async def _run_station_services(station: RobotStation, config: dict, no_ui: bool) -> None:
-    tasks = [asyncio.create_task(station.serve(config.get("host", "0.0.0.0"), int(config.get("port", 8765))))]
+    tasks = [
+        asyncio.create_task(
+            station.serve(config.get("host", "0.0.0.0"), int(config.get("port", 8765)))
+        )
+    ]
     if not no_ui:
         try:
             import uvicorn
@@ -43,15 +51,29 @@ async def _run_station_services(station: RobotStation, config: dict, no_ui: bool
             raise RuntimeError("install the ui extra or pass --no-ui") from exc
         from robotics_stack.ui.app import create_app
 
-        server = uvicorn.Server(uvicorn.Config(create_app(station), host=config.get("ui_host", "0.0.0.0"), port=int(config.get("ui_port", 8080)), log_level="warning"))
+        server = uvicorn.Server(
+            uvicorn.Config(
+                create_app(station),
+                host=config.get("ui_host", "0.0.0.0"),
+                port=int(config.get("ui_port", 8080)),
+                log_level="warning",
+            )
+        )
         tasks.append(asyncio.create_task(server.serve()))
     await asyncio.gather(*tasks)
 
 
 def _train(args: argparse.Namespace) -> None:
     schema, _, _ = load_station_config(args.schema)
-    result = train_state_mlp(args.data, args.output, schema, epochs=args.epochs, batch_size=args.batch_size)
-    print(json.dumps({"output": str(result.output), "samples": result.samples, "train_mse": result.loss}, indent=2))
+    result = train_state_mlp(
+        args.data, args.output, schema, epochs=args.epochs, batch_size=args.batch_size
+    )
+    print(
+        json.dumps(
+            {"output": str(result.output), "samples": result.samples, "train_mse": result.loss},
+            indent=2,
+        )
+    )
 
 
 def _inspect(args: argparse.Namespace) -> None:
@@ -70,7 +92,7 @@ def main() -> None:
     policy = commands.add_parser("policy", help="run a policy worker on the Thor")
     policy.add_argument("--config", required=True)
     policy.add_argument("--checkpoint", required=True)
-    policy.set_defaults(func=lambda a: asyncio.run(run_policy_agent(_policy_url(a.config), a.checkpoint)))
+    policy.set_defaults(func=_policy)
     train = commands.add_parser("train", help="train the native state_mlp policy")
     train.add_argument("--data", required=True)
     train.add_argument("--output", required=True)
@@ -81,6 +103,10 @@ def main() -> None:
     inspect = commands.add_parser("inspect", help="print checkpoint manifest")
     inspect.add_argument("checkpoint")
     inspect.set_defaults(func=_inspect)
+    evaluate = commands.add_parser("evaluate", help="validate a checkpoint against replay data")
+    evaluate.add_argument("--checkpoint", required=True)
+    evaluate.add_argument("--data", required=True)
+    evaluate.set_defaults(func=_evaluate)
     args = parser.parse_args()
     args.func(args)
 
@@ -89,3 +115,16 @@ def _policy_url(path: str) -> str:
     from robotics_stack.runtime.config import load_yaml
 
     return str(load_yaml(path)["station_url"])
+
+
+def _evaluate(args: argparse.Namespace) -> None:
+    report = evaluate_state_mlp(args.checkpoint, args.data)
+    print(json.dumps(report.__dict__, indent=2))
+
+
+def _policy(args: argparse.Namespace) -> None:
+    asyncio.run(run_policy_agent(_policy_url(args.config), args.checkpoint))
+
+
+if __name__ == "__main__":
+    main()

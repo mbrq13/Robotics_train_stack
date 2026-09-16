@@ -57,6 +57,9 @@ station:
   ui_port: 8080
   watchdog_ms: 400
   action_age_ms: 250
+  # Measure and approve a collision-free pose for this specific installation.
+  # Home is intentionally disabled until these 14 values are set and reviewed.
+  # home_action: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 piper:
   left_port: can0

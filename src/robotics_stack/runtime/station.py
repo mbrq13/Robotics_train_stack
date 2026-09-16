@@ -36,12 +36,14 @@ class RobotStation:
         watchdog_ms: float = 400.0,
         action_age_ms: float = 250.0,
         cameras: CameraHub | None = None,
+        home_action: tuple[float, ...] | None = None,
     ):
         self.robot = robot
         self.schema = schema
         self.supervisor = MotionSupervisor(schema, action_age_ms)
         self.watchdog_ms = watchdog_ms
         self.cameras = cameras
+        self.home_action = home_action
         self.policy_connected = False
         self._observation_id = 0
         self._accepted_actions = 0
@@ -98,7 +100,11 @@ class RobotStation:
 
     def home(self) -> None:
         self.pause("home requested")
-        self.robot.home()
+        if self.home_action is None:
+            raise RuntimeError("home is not configured for this Piper rig")
+        if self._streamer is None:
+            raise RuntimeError("motion streamer is unavailable")
+        self._streamer.set_target(self.home_action)
 
     def clear_fault(self) -> None:
         if self._streamer is not None:
@@ -106,6 +112,7 @@ class RobotStation:
         self.supervisor.reset_fault()
 
     def status(self) -> StationStatus:
+        health = self.cameras.health() if self.cameras is not None else {}
         return StationStatus(
             state=self.supervisor.state.value,
             session_id=self.supervisor.session_id,
@@ -114,8 +121,12 @@ class RobotStation:
             accepted_actions=self._accepted_actions,
             rejected_actions=self._rejected_actions,
             cameras={
-                name: {"connected": health.connected, "age_ms": health.age_ms, "error": health.error}
-                for name, health in (self.cameras.health().items() if self.cameras is not None else [])
+                name: {
+                    "connected": camera.connected,
+                    "age_ms": camera.age_ms,
+                    "error": camera.error,
+                }
+                for name, camera in health.items()
             },
         )
 
@@ -135,7 +146,8 @@ class RobotStation:
         self.policy_connected = True
         try:
             hello = json.loads(await asyncio.wait_for(websocket.recv(), timeout=5.0))
-            if hello.get("type") != "hello" or int(hello.get("schema_version", -1)) != self.schema.version:
+            compatible_schema = int(hello.get("schema_version", -1)) == self.schema.version
+            if hello.get("type") != "hello" or not compatible_schema:
                 raise ValueError("policy schema does not match station")
             await self._send(
                 {

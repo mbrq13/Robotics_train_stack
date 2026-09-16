@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-import time
 
 import numpy as np
 
@@ -59,8 +58,12 @@ class MotionStreamer:
                 if self._current is None or self._target is None:
                     continue
                 speed = np.asarray([limit.max_speed for limit in self.schema.joint_limits])
-                acceleration = np.asarray([limit.max_acceleration for limit in self.schema.joint_limits])
-                requested_velocity = np.clip((self._target - self._current) / interval, -speed, speed)
+                acceleration = np.asarray(
+                    [limit.max_acceleration for limit in self.schema.joint_limits]
+                )
+                requested_velocity = np.clip(
+                    (self._target - self._current) / interval, -speed, speed
+                )
                 velocity_step = np.clip(
                     requested_velocity - self._velocity,
                     -acceleration * interval,

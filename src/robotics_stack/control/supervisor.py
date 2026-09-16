@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from robotics_stack.contracts import ContractError, PolicyAction, RobotSchema
 
 
-class RunState(str, enum.Enum):
+class RunState(str, enum.Enum):  # noqa: UP042 - keep the runtime importable on commissioning PCs
     DISCONNECTED = "disconnected"
     READY = "ready"
     ARMED = "armed"

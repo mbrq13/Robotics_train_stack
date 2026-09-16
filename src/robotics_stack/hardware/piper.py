@@ -13,7 +13,6 @@ import numpy as np
 
 from robotics_stack.contracts import RobotSchema
 
-
 RAD_TO_MDEG = 1000.0 * 180.0 / np.pi
 MDEG_TO_RAD = 1.0 / RAD_TO_MDEG
 
@@ -62,10 +61,20 @@ class _Arm:
 
     def joints(self) -> np.ndarray:
         joints = self.sdk.GetArmJointMsgs().joint_state
-        return np.asarray(
-            [joints.joint_1, joints.joint_2, joints.joint_3, joints.joint_4, joints.joint_5, joints.joint_6],
-            dtype=np.float64,
-        ) * MDEG_TO_RAD
+        return (
+            np.asarray(
+                [
+                    joints.joint_1,
+                    joints.joint_2,
+                    joints.joint_3,
+                    joints.joint_4,
+                    joints.joint_5,
+                    joints.joint_6,
+                ],
+                dtype=np.float64,
+            )
+            * MDEG_TO_RAD
+        )
 
     def gripper(self) -> float:
         message = self.sdk.GetArmGripperMsgs().gripper_state

@@ -17,7 +17,10 @@ def observation_message(observation: Observation) -> dict[str, Any]:
         "observation_id": observation.observation_id,
         "station_monotonic_ns": observation.station_monotonic_ns,
         "state": list(observation.state),
-        "images": {name: base64.b64encode(image).decode("ascii") for name, image in observation.images.items()},
+        "images": {
+            name: base64.b64encode(image).decode("ascii")
+            for name, image in observation.images.items()
+        },
     }
 
 

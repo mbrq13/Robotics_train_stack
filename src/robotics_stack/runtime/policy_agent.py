@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
 
@@ -18,7 +17,9 @@ async def run_policy_agent(url: str, checkpoint: str | Path) -> None:
         raise RuntimeError("install the policy extra to run a policy agent") from exc
     policy, manifest = StateMlpPolicy.load(checkpoint)
     async with connect(url, max_size=8 * 1024 * 1024) as websocket:
-        await websocket.send(json.dumps({"type": "hello", "schema_version": manifest.schema.version}))
+        await websocket.send(
+            json.dumps({"type": "hello", "schema_version": manifest.schema.version})
+        )
         hello = json.loads(await websocket.recv())
         schema = RobotSchema.from_dict(hello["schema"])
         if schema != manifest.schema:
