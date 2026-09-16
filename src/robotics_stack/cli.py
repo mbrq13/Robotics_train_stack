@@ -8,9 +8,10 @@ import json
 from pathlib import Path
 
 from robotics_stack.hardware.fake import FakeRobot
+from robotics_stack.hardware.cameras import CameraHub
 from robotics_stack.hardware.piper import BiPiper
 from robotics_stack.learning.train import train_state_mlp
-from robotics_stack.runtime.config import load_station_config
+from robotics_stack.runtime.config import load_camera_configs, load_station_config, load_yaml
 from robotics_stack.runtime.policy_agent import run_policy_agent
 from robotics_stack.runtime.station import RobotStation
 
@@ -18,11 +19,13 @@ from robotics_stack.runtime.station import RobotStation
 def _station(args: argparse.Namespace) -> None:
     schema, station_cfg, piper_cfg = load_station_config(args.config)
     robot = FakeRobot(schema) if args.fake else BiPiper(schema, piper_cfg)
+    cameras = None if args.fake else CameraHub(load_camera_configs(load_yaml(args.config)))
     station = RobotStation(
         robot,
         schema,
         watchdog_ms=float(station_cfg.get("watchdog_ms", 400)),
         action_age_ms=float(station_cfg.get("action_age_ms", 250)),
+        cameras=cameras,
     )
     station.connect()
     try:

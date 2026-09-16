@@ -12,6 +12,7 @@ from robotics_stack.contracts import Observation, RobotSchema
 from robotics_stack.control.streamer import MotionStreamer
 from robotics_stack.control.supervisor import MotionSupervisor, RunState
 from robotics_stack.hardware.base import RobotDriver
+from robotics_stack.hardware.cameras import CameraHub
 from robotics_stack.link.messages import observation_message, parse_action
 
 
@@ -23,6 +24,7 @@ class StationStatus:
     last_fault: str | None
     accepted_actions: int
     rejected_actions: int
+    cameras: dict[str, dict[str, object]]
 
 
 class RobotStation:
@@ -33,11 +35,13 @@ class RobotStation:
         *,
         watchdog_ms: float = 400.0,
         action_age_ms: float = 250.0,
+        cameras: CameraHub | None = None,
     ):
         self.robot = robot
         self.schema = schema
         self.supervisor = MotionSupervisor(schema, action_age_ms)
         self.watchdog_ms = watchdog_ms
+        self.cameras = cameras
         self.policy_connected = False
         self._observation_id = 0
         self._accepted_actions = 0
@@ -49,9 +53,15 @@ class RobotStation:
 
     def connect(self) -> None:
         self.robot.connect()
-        self._streamer = MotionStreamer(self.robot, self.schema)
-        self._streamer.start()
-        self.supervisor.connected()
+        try:
+            if self.cameras is not None:
+                self.cameras.connect()
+            self._streamer = MotionStreamer(self.robot, self.schema)
+            self._streamer.start()
+            self.supervisor.connected()
+        except BaseException:
+            self.disconnect()
+            raise
 
     def disconnect(self) -> None:
         try:
@@ -61,6 +71,8 @@ class RobotStation:
             if self._streamer is not None:
                 self._streamer.stop()
                 self._streamer = None
+            if self.cameras is not None:
+                self.cameras.disconnect()
             self.robot.disconnect()
             self.supervisor.state = RunState.DISCONNECTED
 
@@ -69,6 +81,8 @@ class RobotStation:
             raise RuntimeError("connect the robot before validation")
         observation = self.robot.observation()
         self.schema.validate_action(observation)
+        if self.cameras is not None:
+            self.cameras.validate()
 
     def arm(self) -> str:
         self.validate_hardware()
@@ -99,6 +113,10 @@ class RobotStation:
             last_fault=self.supervisor.last_fault or self._last_rejection,
             accepted_actions=self._accepted_actions,
             rejected_actions=self._rejected_actions,
+            cameras={
+                name: {"connected": health.connected, "age_ms": health.age_ms, "error": health.error}
+                for name, health in (self.cameras.health().items() if self.cameras is not None else [])
+            },
         )
 
     async def serve(self, host: str, port: int) -> None:
@@ -127,7 +145,14 @@ class RobotStation:
                     "session_id": self.supervisor.session_id,
                 }
             )
-            await asyncio.gather(self._observation_loop(), self._receive_loop(websocket))
+            observation_task = asyncio.create_task(self._observation_loop())
+            receive_task = asyncio.create_task(self._receive_loop(websocket))
+            _done, pending = await asyncio.wait(
+                {observation_task, receive_task}, return_when=asyncio.FIRST_COMPLETED
+            )
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
         except Exception as exc:
             self.supervisor.fault(f"policy link failed: {exc}")
             self.robot.hold()
@@ -147,6 +172,7 @@ class RobotStation:
                     observation_id=self._observation_id,
                     station_monotonic_ns=time.monotonic_ns(),
                     state=self.robot.observation(),
+                    images=self.cameras.frames() if self.cameras is not None else {},
                 )
                 message = observation_message(observation)
                 message["session_id"] = self.supervisor.session_id

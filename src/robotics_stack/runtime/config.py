@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 
 from robotics_stack.contracts import RobotSchema
+from robotics_stack.hardware.cameras import CameraConfig
 from robotics_stack.hardware.piper import PiperConnection
 
 
@@ -25,3 +26,7 @@ def load_station_config(path: str | Path) -> tuple[RobotSchema, dict[str, Any], 
     station = value.get("station", {})
     piper = PiperConnection(**value.get("piper", {}))
     return schema, station, piper
+
+
+def load_camera_configs(value: dict[str, Any]) -> list[CameraConfig]:
+    return [CameraConfig(**camera) for camera in value.get("cameras", [])]

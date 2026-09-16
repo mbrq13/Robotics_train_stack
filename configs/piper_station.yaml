@@ -65,3 +65,8 @@ piper:
   gripper_max_microm: 70000
   gripper_effort: 1000
   enable_timeout_s: 10
+
+cameras:
+  - {name: left, device: /dev/v4l/by-path/REPLACE-left-video-index0, width: 640, height: 480, fps: 30}
+  - {name: top, device: /dev/v4l/by-path/REPLACE-top-video-index0, width: 672, height: 376, fps: 30}
+  - {name: right, device: /dev/v4l/by-path/REPLACE-right-video-index0, width: 640, height: 480, fps: 30}
