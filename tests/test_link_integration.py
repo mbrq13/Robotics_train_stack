@@ -50,6 +50,7 @@ def test_station_accepts_only_current_network_action() -> None:
                 station.start()
                 observation_wire = json.loads(await client.recv())
                 observation = parse_observation(observation_wire)
+                assert observation.control_generation == 0
                 await client.send(
                     json.dumps(
                         action_message(
@@ -60,6 +61,7 @@ def test_station_accepts_only_current_network_action() -> None:
                                 station_monotonic_ns=observation.station_monotonic_ns,
                                 schema_version=1,
                                 values=(0.2, 0.5),
+                                control_generation=observation.control_generation,
                             )
                         )
                     )

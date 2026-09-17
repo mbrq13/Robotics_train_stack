@@ -24,6 +24,8 @@ class StationStatus:
     last_fault: str | None
     accepted_actions: int
     rejected_actions: int
+    control_generation: int
+    control_phase: str
     cameras: dict[str, dict[str, object]]
     rtc: dict[str, object]
 
@@ -137,6 +139,8 @@ class RobotStation:
             last_fault=self.supervisor.last_fault or self._last_rejection,
             accepted_actions=self._accepted_actions,
             rejected_actions=self._rejected_actions,
+            control_generation=self.supervisor.control_generation,
+            control_phase=self.supervisor.authority.snapshot.phase.value,
             cameras={
                 name: {
                     "connected": camera.connected,
@@ -179,6 +183,7 @@ class RobotStation:
                     "schema": self.schema.to_dict(),
                     "state": self.supervisor.state.value,
                     "session_id": self.supervisor.session_id,
+                    "control_generation": self.supervisor.control_generation,
                 }
             )
             observation_task = asyncio.create_task(self._observation_loop())
@@ -211,6 +216,7 @@ class RobotStation:
                     station_monotonic_ns=time.monotonic_ns(),
                     state=self.robot.observation(),
                     images=self.cameras.frames() if self.cameras is not None else {},
+                    control_generation=self.supervisor.control_generation,
                 )
                 message = observation_message(observation)
                 message["session_id"] = self.supervisor.session_id

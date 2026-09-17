@@ -37,6 +37,7 @@ async def _run_standard_agent(websocket: Any, policy: DeployedPolicy, schema: Ro
                         station_monotonic_ns=observation.station_monotonic_ns,
                         schema_version=schema.version,
                         values=action,
+                        control_generation=observation.control_generation,
                     )
                 )
             )
@@ -55,6 +56,7 @@ async def _run_rtc_agent(
     latency = LatencyTracker()
     latest: tuple[Observation, str] | None = None
     active_session: str | None = None
+    active_generation: int | None = None
     observation_ready = asyncio.Event()
     stopped = asyncio.Event()
     send_lock = asyncio.Lock()
@@ -65,7 +67,7 @@ async def _run_rtc_agent(
             await websocket.send(json.dumps(message))
 
     async def receive_observations() -> None:
-        nonlocal active_session, latest, latency
+        nonlocal active_generation, active_session, latest, latency
         try:
             async for raw_message in websocket:
                 message = json.loads(raw_message)
@@ -74,11 +76,16 @@ async def _run_rtc_agent(
                 session_id = str(message.get("session_id", ""))
                 if not session_id:
                     continue
-                if active_session != session_id:
+                observation = parse_observation(message)
+                if (
+                    active_session != session_id
+                    or active_generation != observation.control_generation
+                ):
                     active_session = session_id
+                    active_generation = observation.control_generation
                     queue.clear()
                     latency = LatencyTracker()
-                latest = (parse_observation(message), session_id)
+                latest = (observation, session_id)
                 observation_ready.set()
         finally:
             stopped.set()
@@ -91,6 +98,7 @@ async def _run_rtc_agent(
             if stopped.is_set() or latest is None or len(queue) > settings.refill_threshold:
                 continue
             observation, session_at_start = latest
+            generation_at_start = observation.control_generation
             previous_raw = queue.raw_left_over()
             expected_delay = latency.delay_steps(settings.control_hz)
             started_at = time.perf_counter()
@@ -105,13 +113,17 @@ async def _run_rtc_agent(
                 measured_delay = math.ceil(elapsed_s * settings.control_hz)
                 latency.add(elapsed_s)
                 # Ignore work produced for a replaced session.
-                if active_session != session_at_start:
+                if (
+                    active_session != session_at_start
+                    or active_generation != generation_at_start
+                ):
                     continue
                 queue.merge(
                     chunk,
                     inference_delay_steps=measured_delay,
                     observation_id=observation.observation_id,
                     station_monotonic_ns=observation.station_monotonic_ns,
+                    control_generation=generation_at_start,
                 )
             except Exception as exc:
                 await send({"type": "rtc_status", "error": str(exc), **latency.snapshot()})
@@ -137,6 +149,7 @@ async def _run_rtc_agent(
                                 schema_version=schema.version,
                                 values=tuple(float(value) for value in queued.action),
                                 scheduled=True,
+                                control_generation=queued.control_generation,
                             )
                         )
                     )

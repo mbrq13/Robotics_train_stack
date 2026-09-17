@@ -23,18 +23,33 @@ def _chunk(offset: float = 0) -> RtcChunk:
 
 def test_rtc_queue_preserves_in_flight_prefix_and_skips_conditioned_chunk_prefix() -> None:
     queue = RtcActionQueue(_settings(), action_dim=2)
-    queue.merge(_chunk(), inference_delay_steps=0, observation_id=1, station_monotonic_ns=10)
+    queue.merge(
+        _chunk(),
+        inference_delay_steps=0,
+        observation_id=1,
+        station_monotonic_ns=10,
+        control_generation=4,
+    )
     first = queue.pop()
     assert first is not None
     assert tuple(first.action) == (100, 100.5)
+    assert first.control_generation == 4
 
-    queue.merge(_chunk(20), inference_delay_steps=2, observation_id=2, station_monotonic_ns=20)
+    queue.merge(
+        _chunk(20),
+        inference_delay_steps=2,
+        observation_id=2,
+        station_monotonic_ns=20,
+        control_generation=5,
+    )
     assert len(queue) == 5  # two previously queued + three new planned actions
     preserved = queue.pop()
     assert preserved is not None
     assert tuple(preserved.action) == (101, 101.5)
+    assert preserved.control_generation == 4
     first_new = list(queue._items)[1]
     assert tuple(first_new.action) == (122, 122.5)
+    assert first_new.control_generation == 5
 
 
 def test_rtc_settings_rejects_horizon_without_training_margin() -> None:

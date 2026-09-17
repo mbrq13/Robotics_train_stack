@@ -69,6 +69,7 @@ class QueuedAction:
     action: np.ndarray
     observation_id: int
     station_monotonic_ns: int
+    control_generation: int
 
 
 class RtcActionQueue:
@@ -111,6 +112,7 @@ class RtcActionQueue:
         inference_delay_steps: int,
         observation_id: int,
         station_monotonic_ns: int,
+        control_generation: int,
     ) -> int:
         if chunk.actions.shape[1] != self.action_dim:
             raise ValueError("RTC chunk action dimension differs from station schema")
@@ -128,6 +130,7 @@ class RtcActionQueue:
                 action=chunk.actions[index].astype(np.float32, copy=True),
                 observation_id=observation_id,
                 station_monotonic_ns=station_monotonic_ns,
+                control_generation=control_generation,
             )
             for index in range(delay, end)
         ]

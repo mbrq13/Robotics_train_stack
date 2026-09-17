@@ -64,3 +64,20 @@ def test_supervisor_has_a_distinct_first_action_deadline() -> None:
         first_action_timeout_ms=15_000,
         now_ns=guard.run_started_at_ns + 15_001_000_000,
     )
+
+
+def test_supervisor_rejects_actions_from_a_previous_control_generation() -> None:
+    guard = MotionSupervisor(schema(), max_action_age_ms=100)
+    guard.connected()
+    guard.arm()
+    guard.start()
+    assert guard.control_generation == 0
+
+    guard.pause()
+    session = guard.arm()
+    guard.start()
+    assert guard.control_generation == 1
+    assert not guard.validate(action(session), now_ns=1_000_000_010).accepted
+
+    current = PolicyAction(session, 1, 1, 1_000_000_000, 1, (0.25, 0.5), control_generation=1)
+    assert guard.validate(current, now_ns=1_000_000_010).accepted

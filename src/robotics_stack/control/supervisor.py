@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass
 
 from robotics_stack.contracts import ContractError, PolicyAction, RobotSchema
+from robotics_stack.guidance.authority import ControlAuthority, ControlSource
 
 
 class RunState(str, enum.Enum):  # noqa: UP042 - keep the runtime importable on commissioning PCs
@@ -47,6 +48,7 @@ class MotionSupervisor:
         self.max_action_age_ns = int(max_action_age_ms * 1_000_000)
         self.max_scheduled_action_age_ns = int(scheduled_age_ms * 1_000_000)
         self.state = RunState.DISCONNECTED
+        self.authority = ControlAuthority()
         self.session_id: str | None = None
         self.last_sequence_id = -1
         self.last_fault: str | None = None
@@ -71,15 +73,19 @@ class MotionSupervisor:
         if self.state != RunState.ARMED:
             raise RuntimeError("robot must be armed before execution")
         self.state = RunState.RUNNING
+        self.authority.activate_policy()
         self.run_started_at_ns = time.monotonic_ns()
 
     def pause(self, reason: str = "operator pause") -> None:
         if self.state != RunState.DISCONNECTED:
             self.state = RunState.PAUSED
+        if self.authority.snapshot.source is not ControlSource.HOLD:
+            self.authority.hold()
         self.last_fault = reason
 
     def fault(self, reason: str) -> None:
         self.state = RunState.FAULT
+        self.authority.stop()
         self.last_fault = reason
         self.session_id = None
 
@@ -90,12 +96,18 @@ class MotionSupervisor:
         self.last_fault = None
         self.last_sequence_id = -1
 
+    @property
+    def control_generation(self) -> int:
+        return self.authority.snapshot.generation
+
     def validate(self, action: PolicyAction, now_ns: int | None = None) -> GuardResult:
         now = time.monotonic_ns() if now_ns is None else now_ns
         if self.state != RunState.RUNNING:
             return GuardResult(False, f"station is {self.state.value}")
         if action.session_id != self.session_id:
             return GuardResult(False, "session does not match current armed session")
+        if not self.authority.accepts(ControlSource.POLICY, action.control_generation):
+            return GuardResult(False, "action belongs to an inactive control generation")
         if action.schema_version != self.schema.version:
             return GuardResult(False, "schema version does not match robot")
         if action.sequence_id <= self.last_sequence_id:

@@ -16,6 +16,7 @@ def observation_message(observation: Observation) -> dict[str, Any]:
         "protocol_version": PROTOCOL_VERSION,
         "observation_id": observation.observation_id,
         "station_monotonic_ns": observation.station_monotonic_ns,
+        "control_generation": observation.control_generation,
         "state": list(observation.state),
         "images": {
             name: base64.b64encode(image).decode("ascii")
@@ -32,6 +33,7 @@ def parse_observation(value: dict[str, Any]) -> Observation:
         station_monotonic_ns=int(value["station_monotonic_ns"]),
         state=tuple(float(number) for number in value["state"]),
         images={name: base64.b64decode(image) for name, image in value.get("images", {}).items()},
+        control_generation=int(value.get("control_generation", 0)),
     )
 
 
@@ -46,6 +48,7 @@ def action_message(action: PolicyAction) -> dict[str, Any]:
         "schema_version": action.schema_version,
         "values": list(action.values),
         "scheduled": action.scheduled,
+        "control_generation": action.control_generation,
     }
 
 
@@ -60,4 +63,5 @@ def parse_action(value: dict[str, Any]) -> PolicyAction:
         schema_version=int(value["schema_version"]),
         values=tuple(float(number) for number in value["values"]),
         scheduled=bool(value.get("scheduled", False)),
+        control_generation=int(value.get("control_generation", 0)),
     )

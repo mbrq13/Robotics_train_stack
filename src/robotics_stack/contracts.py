@@ -80,6 +80,7 @@ class Observation:
     station_monotonic_ns: int
     state: tuple[float, ...]
     images: dict[str, bytes] = field(default_factory=dict)
+    control_generation: int = 0
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,11 @@ class PolicyAction:
     schema_version: int
     values: tuple[float, ...]
     scheduled: bool = False
+    control_generation: int = 0
+
+    def __post_init__(self) -> None:
+        if self.control_generation < 0:
+            raise ContractError("control_generation must not be negative")
 
 
 @dataclass(frozen=True)
