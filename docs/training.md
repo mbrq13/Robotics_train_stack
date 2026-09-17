@@ -1,28 +1,25 @@
-# Training and validation
+# Training
 
-The initial native policy is `state_mlp`, a behaviour-cloning MLP. It exists to make the full train → artifact → replay → Thor → Piper path reproducible with code owned by this repository.
+## Native baseline
 
-## Dataset format
-
-Create an NPZ containing two numeric arrays:
-
-```text
-states:  [N, 14]
-actions: [N, 14]
-```
-
-The order is exactly `configs/piper_station.yaml`: seven left-arm values, then seven right-arm values. Joint values are radians; grippers are normalized to `[0, 1]`.
-
-## Commands
+The built-in baseline uses an NPZ with `states` and `actions` arrays. Both
+arrays must be shaped `[N, 14]` for the supplied bimanual Piper profile.
 
 ```bash
-rstack train --data dataset.npz --output artifacts/first-run --epochs 100
-rstack inspect artifacts/first-run
-rstack evaluate --checkpoint artifacts/first-run --data dataset.npz
+rstack train --data dataset.npz --output artifacts/baseline
+rstack inspect artifacts/baseline
+rstack evaluate --checkpoint artifacts/baseline --data dataset.npz
 ```
 
-`evaluate` reports replay MSE and the number of policy outputs rejected by the same robot schema used at deployment. Any rejected output blocks hardware approval.
+## Pi0.5
 
-## Adding a policy
+Use `configs/train/pi05_rtc.yaml` as a starting point. Set the dataset and
+output location, then validate the configuration before launching training.
 
-A new policy stays under `src/robotics_stack/policy/`. It must expose `predict(state)`, save a `CheckpointManifest`, and pass replay/schema tests. It must not import CAN, UI or network code.
+```bash
+rstack train-pi05 --config configs/train/pi05_rtc.yaml --dry-run
+rstack train-pi05 --config configs/train/pi05_rtc.yaml
+```
+
+`rtc_training_max_delay` is persisted with the checkpoint. Runtime settings
+must remain compatible with that value and the model chunk size.

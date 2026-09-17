@@ -1,4 +1,4 @@
-"""The PC-side agent: the only process allowed to command the Piper."""
+"""Hardware station service."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ class StationStatus:
     accepted_actions: int
     rejected_actions: int
     cameras: dict[str, dict[str, object]]
+    rtc: dict[str, object]
 
 
 class RobotStation:
@@ -34,7 +35,9 @@ class RobotStation:
         schema: RobotSchema,
         *,
         watchdog_ms: float = 400.0,
+        first_action_timeout_ms: float = 15_000.0,
         action_age_ms: float = 250.0,
+        scheduled_action_age_ms: float | None = None,
         motion_mode: str = "direct",
         stream_rate_hz: float = 100.0,
         cameras: CameraHub | None = None,
@@ -42,8 +45,9 @@ class RobotStation:
     ):
         self.robot = robot
         self.schema = schema
-        self.supervisor = MotionSupervisor(schema, action_age_ms)
+        self.supervisor = MotionSupervisor(schema, action_age_ms, scheduled_action_age_ms)
         self.watchdog_ms = watchdog_ms
+        self.first_action_timeout_ms = first_action_timeout_ms
         if motion_mode not in {"direct", "bounded"}:
             raise ValueError("motion_mode must be either 'direct' or 'bounded'")
         self.motion_mode = motion_mode
@@ -55,6 +59,7 @@ class RobotStation:
         self._accepted_actions = 0
         self._rejected_actions = 0
         self._last_rejection: str | None = None
+        self._rtc_status: dict[str, object] = {"enabled": False}
         self._connection: Any | None = None
         self._send_lock = asyncio.Lock()
         self._streamer: MotionStreamer | None = None
@@ -137,10 +142,17 @@ class RobotStation:
                     "connected": camera.connected,
                     "age_ms": camera.age_ms,
                     "error": camera.error,
+                    "shape": camera.shape,
                 }
                 for name, camera in health.items()
             },
+            rtc=dict(self._rtc_status),
         )
+
+    def camera_frame(self, name: str) -> bytes:
+        if self.cameras is None:
+            raise KeyError("this station has no configured cameras")
+        return self.cameras.frame(name)
 
     async def serve(self, host: str, port: int) -> None:
         try:
@@ -188,7 +200,9 @@ class RobotStation:
 
     async def _observation_loop(self) -> None:
         while self._connection is not None:
-            if self.supervisor.watchdog_expired(self.watchdog_ms):
+            if self.supervisor.watchdog_expired(
+                self.watchdog_ms, first_action_timeout_ms=self.first_action_timeout_ms
+            ):
                 self.pause("policy action watchdog expired")
             if self.supervisor.state == RunState.RUNNING:
                 self._observation_id += 1
@@ -206,6 +220,23 @@ class RobotStation:
     async def _receive_loop(self, websocket: Any) -> None:
         async for raw_message in websocket:
             message = json.loads(raw_message)
+            if message.get("type") == "rtc_status":
+                # Remote telemetry does not alter local authority.
+                self._rtc_status = {
+                    key: value
+                    for key, value in message.items()
+                    if key
+                    in {
+                        "enabled",
+                        "queue_depth",
+                        "underruns",
+                        "p95_ms",
+                        "max_ms",
+                        "samples",
+                        "error",
+                    }
+                }
+                continue
             if message.get("type") != "action":
                 continue
             action = parse_action(message)

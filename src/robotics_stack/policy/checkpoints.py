@@ -19,6 +19,7 @@ import numpy as np
 
 from robotics_stack.contracts import CheckpointManifest, ContractError, Observation, RobotSchema
 from robotics_stack.policy.mlp import StateMlpPolicy
+from robotics_stack.policy.rtc import RtcChunk, RtcSettings
 
 
 def _checkpoint_file(checkpoint: str | Path, filename: str) -> Path:
@@ -61,6 +62,8 @@ class CheckpointDescriptor:
     action_names: tuple[str, ...]
     cameras: dict[str, tuple[int, ...]]
     source: str
+    rtc_training_max_delay: int = 0
+    chunk_size: int = 0
 
     def validate_station(self, schema: RobotSchema) -> None:
         failures: list[str] = []
@@ -136,6 +139,8 @@ def inspect_checkpoint(
         action_names=tuple(config.get("action_feature_names", ())),
         cameras=cameras,
         source=str(checkpoint),
+        rtc_training_max_delay=int(config.get("rtc_training_max_delay", 0) or 0),
+        chunk_size=int(config.get("chunk_size", 0) or 0),
     )
 
 
@@ -143,6 +148,16 @@ class DeployedPolicy(Protocol):
     descriptor: CheckpointDescriptor
 
     def predict(self, observation: Observation) -> tuple[float, ...]: ...
+
+    def configure_rtc(self, settings: RtcSettings) -> None: ...
+
+    def predict_rtc_chunk(
+        self,
+        observation: Observation,
+        *,
+        inference_delay_steps: int,
+        previous_raw_actions: np.ndarray | None,
+    ) -> RtcChunk: ...
 
 
 class NativePolicy:
@@ -161,6 +176,20 @@ class NativePolicy:
 
     def predict(self, observation: Observation) -> tuple[float, ...]:
         return self.policy.predict(observation.state)
+
+    def configure_rtc(self, settings: RtcSettings) -> None:
+        del settings
+        raise ValueError("native state_mlp artifacts do not implement chunked RTC inference")
+
+    def predict_rtc_chunk(
+        self,
+        observation: Observation,
+        *,
+        inference_delay_steps: int,
+        previous_raw_actions: np.ndarray | None,
+    ) -> RtcChunk:
+        del observation, inference_delay_steps, previous_raw_actions
+        raise ValueError("native state_mlp artifacts do not implement chunked RTC inference")
 
 
 class LeRobotPi05Policy:
@@ -182,13 +211,16 @@ class LeRobotPi05Policy:
             from lerobot.policies.factory import get_policy_class, make_pre_post_processors
             from lerobot.policies.utils import prepare_observation_for_inference
         except ImportError as exc:
-            raise RuntimeError("install the policy-lerobot extra on the Thor") from exc
+            raise RuntimeError(
+                "install the policy-lerobot extra in the worker environment"
+            ) from exc
 
         config = PreTrainedConfig.from_pretrained(self.checkpoint)
         if config.type != "pi05":
             raise ValueError(f"expected pi05 checkpoint, got {config.type!r}")
         config.device = device
         self._torch = torch
+        self._config = config
         self._device = torch.device(device)
         self._prepare_observation = prepare_observation_for_inference
         policy_class = get_policy_class(config.type)
@@ -209,11 +241,25 @@ class LeRobotPi05Policy:
         self._preprocessor.reset()
         self._postprocessor.reset()
 
+    @staticmethod
+    def _as_array(value: Any) -> np.ndarray:
+        if isinstance(value, dict):
+            value = value.get("action")
+        elif hasattr(value, "action"):
+            value = value.action
+        if value is None:
+            raise ContractError("Pi0.5 postprocessor did not return an action")
+        if hasattr(value, "detach"):
+            value = value.detach().float().cpu().numpy()
+        return np.asarray(value, dtype=np.float32)
+
     def _frame(self, observation: Observation) -> dict[str, Any]:
         try:
             from PIL import Image
         except ImportError as exc:
-            raise RuntimeError("install the policy-lerobot extra on the Thor") from exc
+            raise RuntimeError(
+                "install the policy-lerobot extra in the worker environment"
+            ) from exc
         frame: dict[str, Any] = {
             "observation.state": np.asarray(observation.state, dtype=np.float32),
         }
@@ -240,16 +286,90 @@ class LeRobotPi05Policy:
         with self._torch.inference_mode(), amp:
             batch = self._prepare_observation(frame, self._device, self.task, "bipiper")
             action = self._postprocessor(self._policy.select_action(self._preprocessor(batch)))
-        if isinstance(action, dict):
-            action = action.get("action")
-        elif hasattr(action, "action"):
-            action = action.action
-        if action is None:
-            raise ContractError("Pi0.5 postprocessor did not return an action")
-        values = np.asarray(action.detach().float().cpu().numpy()).reshape(-1)
+        values = self._as_array(action).reshape(-1)
         if values.size != self.descriptor.action_dim or not np.isfinite(values).all():
             raise ContractError("Pi0.5 produced an invalid action")
         return tuple(float(value) for value in values)
+
+    def configure_rtc(self, settings: RtcSettings) -> None:
+        """Install the checkpoint-derived RTC runtime config before inference."""
+        if self.descriptor.rtc_training_max_delay <= 0:
+            raise ValueError(
+                "trained RTC requires a checkpoint with rtc_training_max_delay > 0; "
+                "run normal deployment or train the policy with RTC enabled"
+            )
+        if settings.training_max_delay != self.descriptor.rtc_training_max_delay:
+            raise ValueError("RTC runtime delay must equal the checkpoint training delay")
+        settings.validate_chunk_size(self.descriptor.chunk_size)
+        try:
+            from lerobot.policies.rtc.configuration_rtc import RTCConfig
+        except ImportError as exc:
+            raise RuntimeError("the installed LeRobot version does not provide RTC") from exc
+
+        # Pi0.5 checkpoints such as hanoi-v1 may carry the training delay but
+        # omit rtc_config.  Reconstruct the persisted runtime metadata from
+        # that explicit training contract instead of guessing a different mode.
+        try:
+            rtc_config = RTCConfig(
+                enabled=True,
+                mode="trained",
+                execution_horizon=settings.execution_horizon,
+            )
+        except TypeError:  # Compatibility with early LeRobot RTC releases.
+            rtc_config = RTCConfig(mode="trained", execution_horizon=settings.execution_horizon)
+            if hasattr(rtc_config, "enabled"):
+                rtc_config.enabled = True
+        for target in (self._config, getattr(self._policy, "config", None)):
+            if target is not None:
+                target.rtc_config = rtc_config
+        model = getattr(self._policy, "model", None)
+        if model is not None and hasattr(model, "config"):
+            model.config.rtc_config = rtc_config
+        initializer = getattr(self._policy, "init_rtc_processor", None)
+        if initializer is None:
+            raise RuntimeError("the loaded Pi0.5 implementation does not support RTC inference")
+        initializer()
+
+    def predict_rtc_chunk(
+        self,
+        observation: Observation,
+        *,
+        inference_delay_steps: int,
+        previous_raw_actions: np.ndarray | None,
+    ) -> RtcChunk:
+        frame = self._frame(observation)
+        amp = (
+            self._torch.autocast(device_type=self._device.type)
+            if self._device.type == "cuda" and self._use_amp
+            else nullcontext()
+        )
+        previous = (
+            None
+            if previous_raw_actions is None
+            else self._torch.as_tensor(
+                previous_raw_actions,
+                device=self._device,
+                dtype=self._torch.float32,
+            )
+        )
+        with self._torch.inference_mode(), amp:
+            batch = self._prepare_observation(frame, self._device, self.task, "bipiper")
+            processed = self._preprocessor(batch)
+            raw_chunk = self._policy.predict_action_chunk(
+                processed,
+                inference_delay=max(0, int(inference_delay_steps)),
+                prev_chunk_left_over=previous,
+            )
+            actions = self._postprocessor(raw_chunk)
+        raw = self._as_array(raw_chunk)
+        output = self._as_array(actions)
+        if raw.ndim == 3:
+            raw = raw[0]
+        if output.ndim == 3:
+            output = output[0]
+        if raw.ndim != 2 or raw.shape[1] != self.descriptor.action_dim:
+            raise ContractError("Pi0.5 RTC returned an invalid action chunk")
+        return RtcChunk(raw=raw, actions=output)
 
 
 def load_deployed_policy(

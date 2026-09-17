@@ -1,4 +1,4 @@
-"""A small native policy used to validate the complete training-to-Piper path."""
+"""Small native policy for baseline training and validation."""
 
 from __future__ import annotations
 

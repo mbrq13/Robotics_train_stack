@@ -1,0 +1,7 @@
+# Measured physical endpoints in micrometres.
+left:
+  closed_microm: 0
+  open_microm: 70000
+right:
+  closed_microm: 0
+  open_microm: 70000

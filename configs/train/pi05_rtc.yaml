@@ -1,0 +1,25 @@
+# Pi0.5 training template with RTC support.
+dataset:
+  repo_id: YOUR_ORG/YOUR_PIPER_DATASET
+  revision: null
+  episodes: null
+
+policy:
+  type: pi05
+  pretrained_path: lerobot/pi05_base
+  device: cuda
+  dtype: bfloat16
+  chunk_size: 50
+  n_action_steps: 25
+  use_relative_actions: false
+  gradient_checkpointing: true
+  # Must not exceed half of chunk_size.
+  rtc_training_max_delay: 10
+
+output_dir: outputs/pi05_rtc
+seed: 1000
+batch_size: 8
+num_workers: 8
+steps: 30000
+log_freq: 50
+save_checkpoint: true

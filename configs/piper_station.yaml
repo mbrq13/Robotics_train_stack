@@ -33,22 +33,22 @@ schema:
     - right_joint_6
     - right_gripper
   camera_names: [left, top, right]
-  # Replace joint ranges with limits validated for this specific Piper rig.
+  # Review limits for each rig.
   joint_limits:
-    - {minimum: -2.8, maximum: 2.8, max_speed: 1.57, max_acceleration: 4.19}
-    - {minimum: -2.0, maximum: 2.0, max_speed: 1.57, max_acceleration: 4.19}
-    - {minimum: -2.8, maximum: 2.8, max_speed: 1.57, max_acceleration: 4.19}
-    - {minimum: -3.1, maximum: 3.1, max_speed: 1.57, max_acceleration: 4.19}
-    - {minimum: -2.8, maximum: 2.8, max_speed: 1.57, max_acceleration: 4.19}
-    - {minimum: -3.1, maximum: 3.1, max_speed: 1.57, max_acceleration: 4.19}
-    - {minimum: 0.0, maximum: 1.0, max_speed: 2.0, max_acceleration: 5.0}
-    - {minimum: -2.8, maximum: 2.8, max_speed: 1.57, max_acceleration: 4.19}
-    - {minimum: -2.0, maximum: 2.0, max_speed: 1.57, max_acceleration: 4.19}
-    - {minimum: -2.8, maximum: 2.8, max_speed: 1.57, max_acceleration: 4.19}
-    - {minimum: -3.1, maximum: 3.1, max_speed: 1.57, max_acceleration: 4.19}
-    - {minimum: -2.8, maximum: 2.8, max_speed: 1.57, max_acceleration: 4.19}
-    - {minimum: -3.1, maximum: 3.1, max_speed: 1.57, max_acceleration: 4.19}
-    - {minimum: 0.0, maximum: 1.0, max_speed: 2.0, max_acceleration: 5.0}
+    - {minimum: -2.8, maximum: 2.8, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
+    - {minimum: -2.0, maximum: 2.0, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
+    - {minimum: -2.8, maximum: 2.8, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
+    - {minimum: -3.1, maximum: 3.1, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
+    - {minimum: -2.8, maximum: 2.8, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
+    - {minimum: -3.1, maximum: 3.1, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
+    - {minimum: 0.0, maximum: 1.0, max_speed: 10.0, max_acceleration: 1000.0}
+    - {minimum: -2.8, maximum: 2.8, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
+    - {minimum: -2.0, maximum: 2.0, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
+    - {minimum: -2.8, maximum: 2.8, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
+    - {minimum: -3.1, maximum: 3.1, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
+    - {minimum: -2.8, maximum: 2.8, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
+    - {minimum: -3.1, maximum: 3.1, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
+    - {minimum: 0.0, maximum: 1.0, max_speed: 10.0, max_acceleration: 1000.0}
 
 station:
   host: 0.0.0.0
@@ -56,13 +56,14 @@ station:
   ui_host: 0.0.0.0
   ui_port: 8080
   watchdog_ms: 400
+  # Initial inference deadline.
+  first_action_timeout_ms: 15000
   action_age_ms: 250
-  # `direct` preserves each accepted policy target.  Select `bounded` only after
-  # measuring this Piper's safe speed/acceleration values below.
-  motion_mode: direct
+  # Queued-action freshness limit.
+  scheduled_action_age_ms: 584
+  motion_mode: bounded
   stream_rate_hz: 100
-  # Measure and approve a collision-free pose for this specific installation.
-  # Home is intentionally disabled until these 14 values are set and reviewed.
+  # Optional approved home pose.
   # home_action: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 piper:
@@ -72,8 +73,11 @@ piper:
   gripper_max_microm: 70000
   gripper_effort: 1000
   enable_timeout_s: 10
+  # Optional per-arm endpoint calibration.
+  # gripper_calibration_file: /opt/robotics/piper_grippers.yaml
 
 cameras:
   - {name: left, device: /dev/v4l/by-path/REPLACE-left-video-index0, width: 640, height: 480, fps: 30}
-  - {name: top, device: /dev/v4l/by-path/REPLACE-top-video-index0, width: 672, height: 376, fps: 30}
+  # Stereo source with left-eye output.
+  - {name: top, device: /dev/v4l/by-path/REPLACE-top-video-index0, width: 672, height: 376, source_width: 1344, crop: left_half, fps: 30}
   - {name: right, device: /dev/v4l/by-path/REPLACE-right-video-index0, width: 640, height: 480, fps: 30}

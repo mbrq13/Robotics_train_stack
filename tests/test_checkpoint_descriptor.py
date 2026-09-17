@@ -42,6 +42,8 @@ def test_pi05_descriptor_requires_order_and_cameras(tmp_path) -> None:
                 "output_features": {"action": {"shape": [14]}},
                 "state_feature_names": names,
                 "action_feature_names": names,
+                "chunk_size": 50,
+                "rtc_training_max_delay": 10,
             }
         ),
         encoding="utf-8",
@@ -49,6 +51,8 @@ def test_pi05_descriptor_requires_order_and_cameras(tmp_path) -> None:
     descriptor = inspect_checkpoint(tmp_path, state_names=tuple(names))
     assert descriptor.kind == "pi05"
     assert descriptor.cameras["top"] == (3, 376, 672)
+    assert descriptor.rtc_training_max_delay == 10
+    assert descriptor.chunk_size == 50
     descriptor.validate_station(_station())
 
     wrong = _station()

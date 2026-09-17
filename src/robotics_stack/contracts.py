@@ -1,4 +1,4 @@
-"""Versioned data contracts shared by training, Thor and the robot station."""
+"""Versioned contracts shared by training and runtime components."""
 
 from __future__ import annotations
 
@@ -90,6 +90,7 @@ class PolicyAction:
     station_monotonic_ns: int
     schema_version: int
     values: tuple[float, ...]
+    scheduled: bool = False
 
 
 @dataclass(frozen=True)

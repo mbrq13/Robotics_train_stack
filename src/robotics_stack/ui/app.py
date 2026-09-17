@@ -1,4 +1,4 @@
-"""Operations API and dashboard served by the robot PC."""
+"""Operations API and dashboard."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from robotics_stack.runtime.station import RobotStation
 
 def create_app(station: RobotStation):
     try:
-        from fastapi import FastAPI, HTTPException
+        from fastapi import FastAPI, HTTPException, Response
         from fastapi.responses import FileResponse
     except ImportError as exc:
         raise RuntimeError("install the ui extra to run the operations console") from exc
@@ -24,6 +24,13 @@ def create_app(station: RobotStation):
     @app.get("/api/status")
     def status():
         return station.status().__dict__
+
+    @app.get("/api/cameras/{name}.jpg")
+    def camera(name: str):
+        try:
+            return Response(content=station.camera_frame(name), media_type="image/jpeg")
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/validate")
     def validate():

@@ -1,11 +1,14 @@
-# The address of the PC that owns the Piper. Never expose this port publicly.
+# Station endpoint.
 station_url: ws://192.168.55.100:8765
-# hanoi-v1 is a Pi0.5 checkpoint. Set its natural-language task here before run.
+# Task instruction for language-conditioned policies.
 task: ""
 device: cuda
 schema_version: 1
-# Pi0.5 config.json does not always declare the semantic state ordering. This
-# explicit profile is checked against the PC station before action is enabled.
+# Use `rtc` only with an RTC-trained checkpoint.
+execution_mode: standard
+rtc_execution_horizon: 10
+rtc_refill_threshold: 10
+# Explicit state ordering for checkpoints that omit semantic names.
 state_names:
   - left_joint_1
   - left_joint_2

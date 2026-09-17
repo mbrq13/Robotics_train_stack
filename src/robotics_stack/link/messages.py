@@ -45,6 +45,7 @@ def action_message(action: PolicyAction) -> dict[str, Any]:
         "station_monotonic_ns": action.station_monotonic_ns,
         "schema_version": action.schema_version,
         "values": list(action.values),
+        "scheduled": action.scheduled,
     }
 
 
@@ -58,4 +59,5 @@ def parse_action(value: dict[str, Any]) -> PolicyAction:
         station_monotonic_ns=int(value["station_monotonic_ns"]),
         schema_version=int(value["schema_version"]),
         values=tuple(float(number) for number in value["values"]),
+        scheduled=bool(value.get("scheduled", False)),
     )

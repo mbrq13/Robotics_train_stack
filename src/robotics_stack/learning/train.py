@@ -1,4 +1,4 @@
-"""Native, reproducible state-to-action behaviour-cloning trainer."""
+"""Native behavior-cloning trainer."""
 
 from __future__ import annotations
 

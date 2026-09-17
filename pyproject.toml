@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "robotics-train-stack"
 version = "0.1.0"
-description = "A clean PC-to-Thor robotics training and deployment stack."
+description = "Training and runtime tooling for policy-driven robotics."
 readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "MIT"}

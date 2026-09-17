@@ -10,6 +10,7 @@ from robotics_stack.evaluation.replay import evaluate_state_mlp
 from robotics_stack.hardware.cameras import CameraHub
 from robotics_stack.hardware.fake import FakeRobot
 from robotics_stack.hardware.piper import BiPiper
+from robotics_stack.learning.pi05 import run_pi05_training
 from robotics_stack.learning.train import train_state_mlp
 from robotics_stack.policy.checkpoints import inspect_checkpoint
 from robotics_stack.runtime.config import load_camera_configs, load_station_config, load_yaml
@@ -25,7 +26,11 @@ def _station(args: argparse.Namespace) -> None:
         robot,
         schema,
         watchdog_ms=float(station_cfg.get("watchdog_ms", 400)),
+        first_action_timeout_ms=float(station_cfg.get("first_action_timeout_ms", 15_000)),
         action_age_ms=float(station_cfg.get("action_age_ms", 250)),
+        scheduled_action_age_ms=float(station_cfg["scheduled_action_age_ms"])
+        if "scheduled_action_age_ms" in station_cfg
+        else None,
         motion_mode=str(station_cfg.get("motion_mode", "direct")),
         stream_rate_hz=float(station_cfg.get("stream_rate_hz", 100)),
         cameras=cameras,
@@ -82,15 +87,20 @@ def _inspect(args: argparse.Namespace) -> None:
     print(json.dumps(inspect_checkpoint(args.checkpoint).__dict__, indent=2))
 
 
+def _train_pi05(args: argparse.Namespace) -> None:
+    command = run_pi05_training(args.config, dry_run=args.dry_run)
+    print(" ".join(command))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="rstack")
     commands = parser.add_subparsers(dest="command", required=True)
-    station = commands.add_parser("station", help="run the PC-side robot station")
+    station = commands.add_parser("station", help="run the hardware station")
     station.add_argument("--config", required=True)
     station.add_argument("--fake", action="store_true", help="run without CAN hardware")
     station.add_argument("--no-ui", action="store_true")
     station.set_defaults(func=_station)
-    policy = commands.add_parser("policy", help="run a policy worker on the Thor")
+    policy = commands.add_parser("policy", help="run the policy worker")
     policy.add_argument("--config", required=True)
     policy.add_argument("--checkpoint", required=True)
     policy.set_defaults(func=_policy)
@@ -101,6 +111,10 @@ def main() -> None:
     train.add_argument("--epochs", type=int, default=100)
     train.add_argument("--batch-size", type=int, default=128)
     train.set_defaults(func=_train)
+    train_pi05 = commands.add_parser("train-pi05", help="launch validated Pi0.5 RTC training")
+    train_pi05.add_argument("--config", required=True)
+    train_pi05.add_argument("--dry-run", action="store_true")
+    train_pi05.set_defaults(func=_train_pi05)
     inspect = commands.add_parser("inspect", help="print checkpoint manifest")
     inspect.add_argument("checkpoint")
     inspect.set_defaults(func=_inspect)
@@ -127,6 +141,13 @@ def _policy(args: argparse.Namespace) -> None:
             device=str(config.get("device", "cuda")),
             schema_version=int(config.get("schema_version", 1)),
             state_names=tuple(str(name) for name in config.get("state_names", [])),
+            execution_mode=str(config.get("execution_mode", "standard")),
+            rtc_execution_horizon=int(config["rtc_execution_horizon"])
+            if "rtc_execution_horizon" in config
+            else None,
+            rtc_refill_threshold=int(config["rtc_refill_threshold"])
+            if "rtc_refill_threshold" in config
+            else None,
         )
     )
 
