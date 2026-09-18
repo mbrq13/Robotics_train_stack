@@ -43,11 +43,15 @@ rstack evaluate --checkpoint artifacts/baseline --data dataset.npz
 rstack train-pi05 --config configs/train/pi05_rtc.yaml --dry-run
 ```
 
-See [deployment](docs/deployment.md), [guided simulation](docs/simulation.md), [training](docs/training.md),
-[operations](docs/operations.md) and [architecture](docs/architecture.md) for
-the corresponding workflows. See [guided collection](docs/guided_collection.md)
-for correction-data provenance and [technical validation](docs/validation_basis.md)
-for the runtime assumptions and commissioning evidence. See [inference modes](docs/inference.md)
-and [robot profiles](docs/robot_profiles.md) for deployment boundaries.
-See [VR teleoperation](docs/teleoperation.md) for headset integration, DLS and
-DAgger control handoff.
+## Documentation
+
+The documentation is deliberately limited to four connected documents:
+
+- [Architecture](docs/architecture.md): component boundaries, robot adapters
+  and the policy/hardware contract.
+- [Workflows](docs/workflows.md): commissioning, simulation, VR collection and
+  the DAgger handoff.
+- [Training](docs/training.md): dataset requirements, checkpoint inspection and
+  training entry points.
+- [Validation](docs/validation.md): the technical basis and evidence required
+  before a real rollout.

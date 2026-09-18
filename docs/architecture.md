@@ -40,8 +40,6 @@ schedules policy action chunks.
 config/         configuration loading and validation
 robots/         device adapters, cameras and robot profiles
 teleoperators/  operator input, VR and authority handoff
-datasets/       episode formats and dataset writers
-processors/     reusable observation and action transforms
 policies/       checkpoint adapters and policy interfaces
 rollout/        sync/RTC execution primitives and output transforms
 control/        station-local lifecycle and motion shaping
@@ -61,3 +59,24 @@ The user-editable YAML files are grouped independently under `configs/`:
 `robots/`, `deploy/`, `teleop/` and `train/`. Code imports configuration
 through `config/`; a command-line entrypoint should not contain deployment or
 teleoperation behavior itself.
+
+## Robot adapters
+
+The core is independent of a particular robot. A deployment selects a
+`RobotSchema`, cameras and a `RobotProfile`; the profile selects a registered
+driver. The driver alone owns device SDK calls and must implement connection,
+observation, target delivery, hold and home. The station, worker, simulation
+and training modules only use the common contract.
+
+The schema and profile declare the action representation, while the worker
+declares the representation expected by the checkpoint. Those three values
+must agree before actions are accepted. The bundled bimanual Piper profile is
+one adapter, not an assumption made by the rest of the stack.
+
+## Execution and collection are different concerns
+
+`sync` and trained `rtc` are inference backends: they define when a policy
+produces actions. Collection is a surrounding workflow: it decides whether a
+sample is written and whether its source was the policy or the operator. This
+separation matters for DAgger: changing authority must not alter a policy
+checkpoint or let old queued actions survive a handoff.
