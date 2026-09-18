@@ -33,22 +33,23 @@ schema:
     - right_joint_6
     - right_gripper
   camera_names: [left, top, right]
-  # Review limits for each rig.
+  action_space: normalized_100
+  # Logical control coordinates for the calibrated Piper profile.
   joint_limits:
-    - {minimum: -2.8, maximum: 2.8, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
-    - {minimum: -2.0, maximum: 2.0, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
-    - {minimum: -2.8, maximum: 2.8, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
-    - {minimum: -3.1, maximum: 3.1, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
-    - {minimum: -2.8, maximum: 2.8, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
-    - {minimum: -3.1, maximum: 3.1, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
-    - {minimum: 0.0, maximum: 1.0, max_speed: 10.0, max_acceleration: 1000.0}
-    - {minimum: -2.8, maximum: 2.8, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
-    - {minimum: -2.0, maximum: 2.0, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
-    - {minimum: -2.8, maximum: 2.8, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
-    - {minimum: -3.1, maximum: 3.1, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
-    - {minimum: -2.8, maximum: 2.8, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
-    - {minimum: -3.1, maximum: 3.1, max_speed: 3.141592653589793, max_acceleration: 12.566370614359172}
-    - {minimum: 0.0, maximum: 1.0, max_speed: 10.0, max_acceleration: 1000.0}
+    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: 0.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: 0.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
 
 station:
   host: 0.0.0.0
@@ -60,9 +61,8 @@ station:
   first_action_timeout_ms: 15000
   action_age_ms: 250
   # Queued-action freshness limit.
-  scheduled_action_age_ms: 584
-  motion_mode: bounded
-  stream_rate_hz: 100
+  scheduled_action_age_ms: 1000
+  motion_mode: direct
   # Optional approved home pose.
   # home_action: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
@@ -72,6 +72,7 @@ piper:
   gripper_min_microm: 0
   gripper_max_microm: 70000
   gripper_effort: 1000
+  action_space: normalized_100
   enable_timeout_s: 10
   # Optional per-arm endpoint calibration.
   # gripper_calibration_file: /opt/robotics/piper_grippers.yaml

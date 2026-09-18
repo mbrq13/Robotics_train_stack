@@ -101,6 +101,19 @@ async def _run_rtc_agent(
             generation_at_start = observation.control_generation
             previous_raw = queue.raw_left_over()
             expected_delay = latency.delay_steps(settings.control_hz)
+            if expected_delay > settings.training_max_delay:
+                await send(
+                    {
+                        "type": "rtc_status",
+                        "error": (
+                            "recent inference latency exceeds the checkpoint RTC training limit"
+                        ),
+                        "enabled": True,
+                        **latency.snapshot(),
+                    }
+                )
+                await asyncio.sleep(settings.action_period_s)
+                continue
             started_at = time.perf_counter()
             try:
                 chunk = await asyncio.to_thread(
@@ -112,6 +125,19 @@ async def _run_rtc_agent(
                 elapsed_s = time.perf_counter() - started_at
                 measured_delay = math.ceil(elapsed_s * settings.control_hz)
                 latency.add(elapsed_s)
+                if measured_delay > settings.training_max_delay:
+                    await send(
+                        {
+                            "type": "rtc_status",
+                            "error": (
+                                "inference result exceeded the checkpoint RTC training limit; "
+                                "chunk discarded"
+                            ),
+                            "enabled": True,
+                            **latency.snapshot(),
+                        }
+                    )
+                    continue
                 # Ignore work produced for a replaced session.
                 if (
                     active_session != session_at_start
@@ -188,6 +214,7 @@ async def run_policy_agent(
     device: str = "cuda",
     schema_version: int = 1,
     state_names: tuple[str, ...] = (),
+    expected_action_space: str = "",
     execution_mode: str = "standard",
     rtc_execution_horizon: int | None = None,
     rtc_refill_threshold: int | None = None,
@@ -207,6 +234,11 @@ async def run_policy_agent(
         schema = RobotSchema.from_dict(hello["schema"])
         if schema.version != schema_version:
             raise RuntimeError("station schema version changed during handshake")
+        if expected_action_space and schema.action_space != expected_action_space:
+            raise RuntimeError(
+                "station action space does not match the worker configuration: "
+                f"station={schema.action_space!r}, worker={expected_action_space!r}"
+            )
         policy.descriptor.validate_station(schema)
         if execution_mode == "standard":
             await _run_standard_agent(websocket, policy, schema)

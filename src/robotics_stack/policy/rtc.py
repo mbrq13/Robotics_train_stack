@@ -117,6 +117,10 @@ class RtcActionQueue:
         if chunk.actions.shape[1] != self.action_dim:
             raise ValueError("RTC chunk action dimension differs from station schema")
         delay = max(0, int(inference_delay_steps))
+        if delay > self.settings.training_max_delay:
+            raise ValueError(
+                "measured inference delay exceeds the checkpoint RTC training limit"
+            )
         if delay >= len(chunk.actions):
             raise ValueError("inference delay consumed the complete RTC action chunk")
 

@@ -212,6 +212,7 @@ def _policy(args: argparse.Namespace) -> None:
             device=str(config.get("device", "cuda")),
             schema_version=int(config.get("schema_version", 1)),
             state_names=tuple(str(name) for name in config.get("state_names", [])),
+            expected_action_space=str(config.get("action_space", "")),
             execution_mode=str(config.get("execution_mode", "standard")),
             rtc_execution_horizon=int(config["rtc_execution_horizon"])
             if "rtc_execution_horizon" in config

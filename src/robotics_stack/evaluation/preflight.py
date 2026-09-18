@@ -15,12 +15,14 @@ from robotics_stack.runtime.config import load_camera_configs, load_station_conf
 class DeploymentPreflight:
     checkpoint: CheckpointDescriptor
     execution_mode: str
+    action_space: str
     camera_shapes: dict[str, tuple[int, int, int]]
 
     def to_dict(self) -> dict[str, object]:
         return {
             "checkpoint": asdict(self.checkpoint),
             "execution_mode": self.execution_mode,
+            "action_space": self.action_space,
             "camera_shapes": self.camera_shapes,
         }
 
@@ -31,8 +33,19 @@ def check_deployment(
     checkpoint: str | Path,
 ) -> DeploymentPreflight:
     """Reject mismatched checkpoint, camera and RTC settings without loading weights."""
-    schema, _station, _piper = load_station_config(station_config)
+    schema, station, piper = load_station_config(station_config)
     worker = load_yaml(worker_config)
+    expected_action_space = str(worker.get("action_space", ""))
+    if expected_action_space and piper.action_space != expected_action_space:
+        raise ContractError(
+            "worker action_space does not match station hardware profile: "
+            f"worker={expected_action_space!r}, station={piper.action_space!r}"
+        )
+    if schema.action_space and schema.action_space != piper.action_space:
+        raise ContractError(
+            "station schema action_space does not match hardware profile: "
+            f"schema={schema.action_space!r}, hardware={piper.action_space!r}"
+        )
     state_names = tuple(str(name) for name in worker.get("state_names", ()))
     descriptor = inspect_checkpoint(checkpoint, state_names=state_names)
     descriptor.validate_station(schema)
@@ -60,5 +73,14 @@ def check_deployment(
             refill_threshold=threshold,
         )
         settings.validate_chunk_size(descriptor.chunk_size)
+        scheduled_age_ms = float(
+            station.get("scheduled_action_age_ms", station.get("action_age_ms", 250))
+        )
+        minimum_scheduled_age_ms = 1_000 * (delay + horizon) / schema.control_hz
+        if scheduled_age_ms < minimum_scheduled_age_ms:
+            raise ContractError(
+                "scheduled_action_age_ms is shorter than the RTC queue lifetime "
+                f"({scheduled_age_ms:.1f} ms < {minimum_scheduled_age_ms:.1f} ms)"
+            )
 
-    return DeploymentPreflight(descriptor, execution_mode, camera_shapes)
+    return DeploymentPreflight(descriptor, execution_mode, piper.action_space, camera_shapes)

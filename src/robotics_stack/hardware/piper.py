@@ -18,6 +18,17 @@ from robotics_stack.contracts import RobotSchema
 
 RAD_TO_MDEG = 1000.0 * 180.0 / np.pi
 MDEG_TO_RAD = 1.0 / RAD_TO_MDEG
+JOINT_SIGNS = np.asarray((-1.0, 1.0, 1.0, -1.0, 1.0, -1.0), dtype=np.float64)
+# Piper reports these limits in tenths of a degree.  A successfully read
+# per-motor limit always supersedes this documented firmware fallback.
+DEFAULT_JOINT_LIMITS_TENTH_DEG = (
+    (-1500, 1500),
+    (0, 1800),
+    (-1700, 0),
+    (-1000, 1000),
+    (-700, 700),
+    (-1200, 1200),
+)
 
 
 @dataclass(frozen=True)
@@ -30,7 +41,8 @@ class PiperConnection:
     enable_timeout_s: float = 10.0
     feedback_timeout_s: float = 1.5
     startup_speed_percent: int = 10
-    motion_speed_percent: int = 80
+    motion_speed_percent: int = 100
+    action_space: str = "normalized_100"
     gripper_calibration_file: str | None = None
 
 
@@ -63,12 +75,22 @@ class _Arm:
         self.sdk = C_PiperInterface_V2(port)
         self.gripper_min = config.gripper_min_microm
         self.gripper_max = config.gripper_max_microm
+        self.joint_min_deg = np.asarray(
+            [minimum / 10.0 for minimum, _ in DEFAULT_JOINT_LIMITS_TENTH_DEG],
+            dtype=np.float64,
+        )
+        self.joint_max_deg = np.asarray(
+            [maximum / 10.0 for _, maximum in DEFAULT_JOINT_LIMITS_TENTH_DEG],
+            dtype=np.float64,
+        )
+        if config.action_space not in {"normalized_100", "radians"}:
+            raise ValueError("Piper action_space must be 'normalized_100' or 'radians'")
 
     def connect(self) -> None:
         self.sdk.ConnectPort()
         try:
             self._wait_for_feedback()
-            measured = self.joints()
+            measured = self._physical_joints()
             if self._requires_reset():
                 reset = getattr(self.sdk, "ResetPiper", None)
                 if reset is not None:
@@ -87,6 +109,7 @@ class _Arm:
             time.sleep(0.05)
             self._select_joint_mode(self.config.motion_speed_percent)
             self._send_joints(measured)
+            self._load_joint_limits()
             self._load_gripper_range()
         except BaseException:
             self.close()
@@ -125,6 +148,31 @@ class _Arm:
         encoded = np.rint(joints * RAD_TO_MDEG).astype(np.int64)
         self.sdk.JointCtrl(*(int(value) for value in encoded))
 
+    def _load_joint_limits(self) -> None:
+        """Read each actuator limit, retaining a documented fallback on timeout."""
+        limits: list[tuple[int, int]] = []
+        for motor in range(1, 7):
+            candidate: tuple[int, int] | None = None
+            deadline = time.monotonic() + self.config.feedback_timeout_s
+            while time.monotonic() < deadline:
+                self.sdk.SearchMotorMaxAngleSpdAccLimit(motor, 0x01)
+                time.sleep(0.05)
+                reply = self.sdk.GetCurrentMotorAngleLimitMaxVel()
+                value = getattr(reply, "current_motor_angle_limit_max_vel", None)
+                if (
+                    getattr(reply, "time_stamp", 0)
+                    and value is not None
+                    and int(getattr(value, "motor_num", -1)) == motor
+                ):
+                    minimum = int(value.min_angle_limit)
+                    maximum = int(value.max_angle_limit)
+                    if minimum < maximum:
+                        candidate = (minimum, maximum)
+                        break
+            limits.append(candidate or DEFAULT_JOINT_LIMITS_TENTH_DEG[motor - 1])
+        self.joint_min_deg = np.asarray([minimum / 10.0 for minimum, _ in limits])
+        self.joint_max_deg = np.asarray([maximum / 10.0 for _, maximum in limits])
+
     def _load_gripper_range(self) -> None:
         configured = _read_gripper_calibration(self.config.gripper_calibration_file, self.side)
         if configured is not None:
@@ -141,7 +189,7 @@ class _Arm:
         if close is not None:
             close()
 
-    def joints(self) -> np.ndarray:
+    def _physical_joints(self) -> np.ndarray:
         joints = self.sdk.GetArmJointMsgs().joint_state
         return (
             np.asarray(
@@ -158,14 +206,31 @@ class _Arm:
             * MDEG_TO_RAD
         )
 
+    def joints(self) -> np.ndarray:
+        physical = self._physical_joints()
+        if self.config.action_space == "radians":
+            return physical
+        signed_degrees = JOINT_SIGNS * np.rad2deg(physical)
+        span = self.joint_max_deg - self.joint_min_deg
+        return ((signed_degrees - self.joint_min_deg) * 200.0 / span) - 100.0
+
     def gripper(self) -> float:
         message = self.sdk.GetArmGripperMsgs().gripper_state
         span = max(1, self.gripper_max - self.gripper_min)
-        return float(np.clip((message.grippers_angle - self.gripper_min) / span, 0.0, 1.0))
+        opening = float(np.clip((message.grippers_angle - self.gripper_min) / span, 0.0, 1.0))
+        return opening if self.config.action_space == "radians" else opening * 100.0
 
     def target(self, joints: np.ndarray, gripper: float) -> None:
-        self._send_joints(joints)
-        opening = float(np.clip(gripper, 0.0, 1.0))
+        if self.config.action_space == "normalized_100":
+            normalized = np.asarray(joints, dtype=np.float64)
+            physical_degrees = self.joint_min_deg + (
+                self.joint_max_deg - self.joint_min_deg
+            ) * (normalized + 100.0) / 200.0
+            self._send_joints(np.deg2rad(JOINT_SIGNS * physical_degrees))
+            opening = float(np.clip(gripper / 100.0, 0.0, 1.0))
+        else:
+            self._send_joints(joints)
+            opening = float(np.clip(gripper, 0.0, 1.0))
         position = int(round(self.gripper_min + opening * (self.gripper_max - self.gripper_min)))
         self.sdk.GripperCtrl(position, self.config.gripper_effort, 0x01, 0x00)
 

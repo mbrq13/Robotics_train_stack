@@ -31,13 +31,21 @@ CAN interface names and camera paths. Confirm these items together:
 - Camera names, output dimensions and crop match the checkpoint inputs.
 - The gripper endpoint file, if used, contains independent measured endpoints
   for both arms.
-- Joint position, speed and acceleration limits are approved for this rig.
+- The selected action representation matches the checkpoint. The supplied
+  profile is `normalized_100`: joints use `-100..100` and grippers use
+  `0..100`, rather than radians and unit gripper opening.
+- Joint position limits are read from each actuator during connection. Confirm
+  the resulting range and the gripper endpoints for this particular rig.
 
-`motion_mode: bounded` runs a station-local 100 Hz trajectory streamer. The
-policy continues to emit position targets at its own cadence; the streamer
-limits how quickly the hardware moves between them. Do not change those limits
-solely to make a policy appear more responsive. First validate the behavior on
-the real rig, because the envelope changes the trajectory seen during rollout.
+The station schema, hardware profile, and worker configuration each declare
+the action representation. Preflight and the worker handshake reject a
+disagreement, so changing a profile cannot silently reinterpret policy output.
+
+`motion_mode: direct` is the default and preserves the policy's output cadence.
+`bounded` runs a station-local trajectory streamer and is deliberately opt-in:
+it changes the trajectory received by the arm. If it is selected, establish
+limits in the same logical coordinates as the profile and qualify them on the
+actual rig before any task rollout.
 
 ## 3. Check the checkpoint without hardware
 
@@ -77,13 +85,21 @@ time, and never sends actions. Its report separates observation delivery,
 model inference and their combined duration. Stop any active policy worker
 first because the station accepts one worker connection at a time.
 
-For RTC, convert latency to control steps with `ceil(p95_seconds * control_hz)`.
-The measured peak must fit the delay range used to train the checkpoint; if it
-does not, reduce the load or control frequency, or train a compatible model.
+For RTC, the runtime uses the maximum recent inference latency for action-prefix
+conditioning; p95 is shown only as an operational diagnostic. Convert a latency
+to controller steps with `ceil(seconds * control_hz)`. A result beyond the
+checkpoint's trained delay is discarded rather than applied with an untrained
+prefix. If the measured peak does not fit, reduce load or control frequency, or
+train a compatible model.
 `execution_mode`, `rtc_execution_horizon` and `rtc_refill_threshold` live in
 the worker configuration. The trained delay limit belongs to checkpoint
 metadata; runtime settings cannot add RTC compatibility to a model that was
 not trained for it.
+
+For queued RTC actions, `scheduled_action_age_ms` must cover at least
+`(trained_delay + execution_horizon) / control_hz`. Preflight enforces this
+lower bound. The supplied value includes commissioning margin; it is not a
+model-latency target.
 
 ## 5. Start a controlled rollout
 

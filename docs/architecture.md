@@ -18,8 +18,16 @@ motion checks remain local to the station.
 - Artifact: model metadata and expected features.
 
 An action is accepted only when its session, sequence, age, schema, generation
-and limits match the active station. The bounded motion profile applies the
-configured velocity and acceleration envelope at the hardware boundary.
+and limits match the active station. The supplied Piper profile uses calibrated
+logical coordinates: joints span `-100..100` and the gripper spans `0..100`.
+The driver converts those values to the measured per-arm firmware ranges only
+at the CAN boundary. This prevents a checkpoint that uses this representation
+from being treated as radians by accident.
+
+Direct target delivery is the default. A bounded motion profile is available
+only as a rig-qualified configuration choice; it changes the action trajectory
+and is not a transparent safety replacement for a policy trained on direct
+targets.
 
 For guided collection, the station can transfer authority from policy to a
 local operator. Timestamped operator targets pass through a fixed-rate bridge:

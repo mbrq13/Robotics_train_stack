@@ -58,6 +58,18 @@ def test_rtc_settings_rejects_horizon_without_training_margin() -> None:
         settings.validate_chunk_size(4)
 
 
+def test_rtc_queue_rejects_results_later_than_the_trained_delay() -> None:
+    queue = RtcActionQueue(_settings(), action_dim=2)
+    with pytest.raises(ValueError, match="training limit"):
+        queue.merge(
+            _chunk(),
+            inference_delay_steps=3,
+            observation_id=1,
+            station_monotonic_ns=10,
+            control_generation=1,
+        )
+
+
 def test_pi05_rtc_launcher_validates_contract(tmp_path) -> None:
     config = tmp_path / "pi05.yaml"
     config.write_text(
