@@ -27,6 +27,9 @@ orientation and crop before starting a run.
 - `home_action` is disabled until an approved pose is configured.
 - `gripper_calibration_file` may point to per-arm endpoints based on
   `configs/piper_grippers.example.yaml`.
+- `execution_mode`, `rtc_execution_horizon` and `rtc_refill_threshold` are
+  worker settings. Use RTC only when checkpoint metadata declares its trained
+  delay budget.
 
 ## Checkpoints
 
@@ -43,3 +46,6 @@ python scripts/measure_policy_latency.py --checkpoint <checkpoint>
 
 The report separates model inference, observation delivery and their combined
 duration, with p95 converted to station control steps.
+
+See [deployment](deployment.md) for the full commissioning sequence, including
+the hardware-free checkpoint preflight and policy-to-operator handoff.

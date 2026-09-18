@@ -26,3 +26,9 @@ An adapter drives the station through `begin_operator_recovery` or
 `begin_operator_correction`, `apply_operator_target`, `finish_operator_control`
 and `resume_policy`. Operator targets are accepted only while that authority
 generation is active; resuming creates a fresh policy session.
+
+When an input device and the Piper operate at different rates, use
+`TargetBridgeSettings` and `create_operator_target_bridge`. The bridge keeps a
+short timestamped history, plays it at a fixed output rate and interpolates
+only between known samples. If the source becomes stale, it holds the robot and
+requires a new operator epoch rather than extrapolating a late movement.

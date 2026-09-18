@@ -43,6 +43,7 @@ rstack evaluate --checkpoint artifacts/baseline --data dataset.npz
 rstack train-pi05 --config configs/train/pi05_rtc.yaml --dry-run
 ```
 
-See [training](docs/training.md), [operations](docs/operations.md) and
-[architecture](docs/architecture.md) for the corresponding workflows. See
-[guided collection](docs/guided_collection.md) for correction-data provenance.
+See [deployment](docs/deployment.md), [training](docs/training.md),
+[operations](docs/operations.md) and [architecture](docs/architecture.md) for
+the corresponding workflows. See [guided collection](docs/guided_collection.md)
+for correction-data provenance.
