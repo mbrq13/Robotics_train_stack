@@ -6,8 +6,8 @@ Robot and cameras → station ⇄ policy worker
 ```
 
 The station owns hardware I/O and the run lifecycle. The policy worker loads
-models and returns actions. The wire protocol is isolated in `link/`, while
-motion checks remain local to the station.
+models and returns actions. The wire protocol is isolated in `transport/`,
+while motion checks remain local to the station.
 
 ## Contracts
 
@@ -37,16 +37,27 @@ schedules policy action chunks.
 ## Layout
 
 ```text
-hardware/   device adapters
-control/    lifecycle and motion shaping
-guidance/   handoff, operator target timing and provenance
-link/       wire protocol
-policy/     checkpoint adapters and action scheduling
-learning/   training entrypoints
-runtime/    station and worker services
-ui/         operations API and web interface
+config/         configuration loading and validation
+robots/         device adapters, cameras and robot profiles
+teleoperators/  operator input, VR and authority handoff
+datasets/       episode formats and dataset writers
+processors/     reusable observation and action transforms
+policies/       checkpoint adapters and policy interfaces
+rollout/        sync/RTC execution primitives and output transforms
+control/        station-local lifecycle and motion shaping
+transport/      station-to-worker protocol
+services/       station and policy-worker processes
+training/       training entrypoints and launch helpers
+evaluation/     preflight, latency and replay checks
+simulation/     offline rollouts and simulated backends
+ui/             operations API and web interface
 ```
 
 Hardware selection is declarative: a `RobotProfile` chooses a registered
 driver, while the station only receives the common driver contract. This keeps
 the control lifecycle and policy link independent of a specific arm.
+
+The user-editable YAML files are grouped independently under `configs/`:
+`robots/`, `deploy/`, `teleop/` and `train/`. Code imports configuration
+through `config/`; a command-line entrypoint should not contain deployment or
+teleoperation behavior itself.

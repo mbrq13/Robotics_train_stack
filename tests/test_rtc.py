@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from robotics_stack.learning.pi05 import pi05_train_command
-from robotics_stack.policy.rtc import RtcActionQueue, RtcChunk, RtcSettings
+from robotics_stack.rollout.rtc import RtcActionQueue, RtcChunk, RtcSettings
+from robotics_stack.training.pi05 import pi05_train_command
 
 
 def _settings() -> RtcSettings:

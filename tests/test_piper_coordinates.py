@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from robotics_stack.hardware.piper import JOINT_SIGNS, _Arm
+from robotics_stack.robots.piper import JOINT_SIGNS, _Arm
 
 
 class _Sdk:

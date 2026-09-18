@@ -6,16 +6,16 @@ import argparse
 import asyncio
 import json
 
+from robotics_stack.config.loaders import load_camera_configs, load_station_config, load_yaml
 from robotics_stack.evaluation.replay import evaluate_state_mlp
-from robotics_stack.hardware.cameras import CameraHub
-from robotics_stack.hardware.fake import FakeRobot
-from robotics_stack.hardware.registry import create_robot_driver
-from robotics_stack.learning.pi05 import run_pi05_training
-from robotics_stack.learning.train import train_state_mlp
-from robotics_stack.policy.checkpoints import inspect_checkpoint
-from robotics_stack.runtime.config import load_camera_configs, load_station_config, load_yaml
-from robotics_stack.runtime.policy_agent import run_policy_agent
-from robotics_stack.runtime.station import RobotStation
+from robotics_stack.policies.checkpoints import inspect_checkpoint
+from robotics_stack.robots.cameras import CameraHub
+from robotics_stack.robots.fake import FakeRobot
+from robotics_stack.robots.registry import create_robot_driver
+from robotics_stack.services.policy_worker import run_policy_agent
+from robotics_stack.services.station import RobotStation
+from robotics_stack.training.pi05 import run_pi05_training
+from robotics_stack.training.train import train_state_mlp
 
 
 def _station(args: argparse.Namespace) -> None:
@@ -94,7 +94,7 @@ def _train_pi05(args: argparse.Namespace) -> None:
 
 def _simulate(args: argparse.Namespace) -> None:
     """Run an offline, visual guided-collection dry run from replayed frames."""
-    from robotics_stack.policy.checkpoints import load_deployed_policy
+    from robotics_stack.policies.checkpoints import load_deployed_policy
     from robotics_stack.simulation.controls import SimulationControls
     from robotics_stack.simulation.dagger import DatasetReplay, GuidedSimulation
     from robotics_stack.simulation.operator_input import OperatorTargetReceiver
@@ -159,7 +159,7 @@ def main() -> None:
     train = commands.add_parser("train", help="train the native state_mlp policy")
     train.add_argument("--data", required=True)
     train.add_argument("--output", required=True)
-    train.add_argument("--schema", default="configs/piper_station.yaml")
+    train.add_argument("--schema", default="configs/robots/piper_bimanual.yaml")
     train.add_argument("--epochs", type=int, default=100)
     train.add_argument("--batch-size", type=int, default=128)
     train.set_defaults(func=_train)
@@ -170,8 +170,8 @@ def main() -> None:
     simulate = commands.add_parser(
         "simulate", help="replay dataset frames through a policy and guided controls"
     )
-    simulate.add_argument("--config", default="configs/policy_worker.yaml")
-    simulate.add_argument("--schema", default="configs/piper_station.yaml")
+    simulate.add_argument("--config", default="configs/deploy/policy_worker.yaml")
+    simulate.add_argument("--schema", default="configs/robots/piper_bimanual.yaml")
     simulate.add_argument("--checkpoint", required=True)
     simulate.add_argument("--dataset", required=True, help="NPZ containing images_<camera> arrays")
     simulate.add_argument("--output", default="outputs/guided_simulation.npz")

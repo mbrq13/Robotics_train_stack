@@ -1,6 +1,6 @@
 import pytest
 
-from robotics_stack.runtime.action_smoothing import ExponentialActionSmoother
+from robotics_stack.rollout.smoothing import ExponentialActionSmoother
 
 
 def test_identity_alpha_preserves_checkpoint_actions() -> None:

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from robotics_stack.hardware.cameras import CameraConfig
-from robotics_stack.hardware.piper import _read_gripper_calibration
+from robotics_stack.robots.cameras import CameraConfig
+from robotics_stack.robots.piper import _read_gripper_calibration
 
 
 def test_stereo_camera_contract_requires_the_real_source_shape() -> None:

@@ -3,8 +3,8 @@ import json
 import numpy as np
 import pytest
 
-from robotics_stack.guidance.authority import GuidancePhase
-from robotics_stack.guidance.records import GuidedEpisode, GuidedSample
+from robotics_stack.teleoperators.guidance.authority import GuidancePhase
+from robotics_stack.teleoperators.guidance.records import GuidedEpisode, GuidedSample
 
 
 def _sample(

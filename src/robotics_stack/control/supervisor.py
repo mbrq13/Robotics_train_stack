@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 
 from robotics_stack.contracts import ContractError, PolicyAction, RobotSchema
-from robotics_stack.guidance.authority import ControlAuthority, ControlSource
+from robotics_stack.teleoperators.guidance.authority import ControlAuthority, ControlSource
 
 
 class RunState(str, enum.Enum):  # noqa: UP042 - keep the runtime importable on commissioning PCs

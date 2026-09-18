@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from robotics_stack.contracts import RobotSchema
-from robotics_stack.hardware.base import RobotDriver
+from robotics_stack.robots.base import RobotDriver
 
 RobotFactory = Callable[[RobotSchema, Mapping[str, Any]], RobotDriver]
 _DRIVERS: dict[str, RobotFactory] = {}
@@ -58,7 +58,7 @@ def create_robot_driver(schema: RobotSchema, profile: RobotProfile) -> RobotDriv
     if profile.driver not in _DRIVERS:
         # Built-in adapters register themselves lazily. Third-party adapters
         # can register before this call without forcing SDK imports elsewhere.
-        from robotics_stack.hardware import piper  # noqa: F401
+        from robotics_stack.robots import piper  # noqa: F401
 
     try:
         factory = _DRIVERS[profile.driver]

@@ -15,8 +15,12 @@ from typing import Protocol
 import numpy as np
 
 from robotics_stack.contracts import ContractError, Observation, RobotSchema
-from robotics_stack.guidance.authority import ControlAuthority, ControlSource, GuidancePhase
-from robotics_stack.guidance.records import GuidedEpisode, GuidedSample
+from robotics_stack.teleoperators.guidance.authority import (
+    ControlAuthority,
+    ControlSource,
+    GuidancePhase,
+)
+from robotics_stack.teleoperators.guidance.records import GuidedEpisode, GuidedSample
 
 
 class PolicyPredictor(Protocol):

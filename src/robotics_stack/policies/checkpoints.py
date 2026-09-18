@@ -18,8 +18,8 @@ from typing import Any, Protocol
 import numpy as np
 
 from robotics_stack.contracts import CheckpointManifest, ContractError, Observation, RobotSchema
-from robotics_stack.policy.mlp import StateMlpPolicy
-from robotics_stack.policy.rtc import RtcChunk, RtcSettings
+from robotics_stack.policies.mlp import StateMlpPolicy
+from robotics_stack.rollout.rtc import RtcChunk, RtcSettings
 
 _NESTED_ARTIFACT = Path("checkpoints/best_mean/pretrained_model")
 
@@ -62,9 +62,7 @@ def _materialize_policy_root(checkpoint: str | Path) -> Path:
     except ImportError as exc:
         raise RuntimeError("install huggingface_hub to load a Hugging Face checkpoint") from exc
     prefix = "" if relative_root == Path(".") else f"{relative_root.as_posix()}/"
-    cached_root = Path(
-        snapshot_download(repo_id=str(checkpoint), allow_patterns=[f"{prefix}**"])
-    )
+    cached_root = Path(snapshot_download(repo_id=str(checkpoint), allow_patterns=[f"{prefix}**"]))
     return cached_root / relative_root
 
 

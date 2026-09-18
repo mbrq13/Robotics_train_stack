@@ -1,8 +1,8 @@
 import numpy as np
 
 from robotics_stack.contracts import JointLimit, RobotSchema
-from robotics_stack.guidance.authority import GuidancePhase
 from robotics_stack.simulation.dagger import DatasetReplay, GuidedSimulation, ReplayFrame
+from robotics_stack.teleoperators.guidance.authority import GuidancePhase
 
 
 class FixedPolicy:

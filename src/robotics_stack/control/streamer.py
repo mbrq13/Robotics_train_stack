@@ -7,7 +7,7 @@ import threading
 import numpy as np
 
 from robotics_stack.contracts import RobotSchema
-from robotics_stack.hardware.base import RobotDriver
+from robotics_stack.robots.base import RobotDriver
 
 
 class MotionStreamer:

@@ -22,8 +22,8 @@ controls as separate components with explicit interfaces.
 ## Quick start
 
 ```bash
-rstack station --config configs/piper_station.yaml
-rstack policy --config configs/policy_worker.yaml --checkpoint <checkpoint>
+rstack station --config configs/robots/piper_bimanual.yaml
+rstack policy --config configs/deploy/policy_worker.yaml --checkpoint <checkpoint>
 ```
 
 Inspect a checkpoint before use:

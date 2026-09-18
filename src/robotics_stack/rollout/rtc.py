@@ -38,8 +38,7 @@ class RtcSettings:
     def validate_chunk_size(self, chunk_size: int) -> None:
         if chunk_size and self.execution_horizon > chunk_size - self.training_max_delay:
             raise ValueError(
-                "execution_horizon must be <= chunk_size - training_max_delay "
-                "for trained RTC"
+                "execution_horizon must be <= chunk_size - training_max_delay for trained RTC"
             )
 
     @property
@@ -124,9 +123,7 @@ class RtcActionQueue:
             raise ValueError("RTC chunk action dimension differs from station schema")
         delay = max(0, int(inference_delay_steps))
         if delay > self.settings.training_max_delay:
-            raise ValueError(
-                "measured inference delay exceeds the checkpoint RTC training limit"
-            )
+            raise ValueError("measured inference delay exceeds the checkpoint RTC training limit")
         if delay >= len(chunk.actions):
             raise ValueError("inference delay consumed the complete RTC action chunk")
 

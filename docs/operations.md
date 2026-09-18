@@ -7,8 +7,8 @@
 3. Run the test suite and a fake session before hardware use.
 
 ```bash
-rstack station --config configs/piper_station.yaml --fake
-rstack policy --config configs/policy_worker.yaml --checkpoint <checkpoint>
+rstack station --config configs/robots/piper_bimanual.yaml --fake
+rstack policy --config configs/deploy/policy_worker.yaml --checkpoint <checkpoint>
 ```
 
 ## Run
@@ -26,7 +26,7 @@ orientation and crop before starting a run.
 - `first_action_timeout_ms` covers initial model warmup.
 - `home_action` is disabled until an approved pose is configured.
 - `gripper_calibration_file` may point to per-arm endpoints based on
-  `configs/piper_grippers.example.yaml`.
+  `configs/robots/piper_grippers.example.yaml`.
 - `execution_mode`, `rtc_execution_horizon` and `rtc_refill_threshold` are
   worker settings. Use RTC only when checkpoint metadata declares its trained
   delay budget.

@@ -6,13 +6,13 @@ import threading
 import time
 from pathlib import Path
 
-from robotics_stack.guidance.authority import ControlSource
 from robotics_stack.simulation.controls import (
     SimulationCommand,
     SimulationCommandType,
     SimulationControls,
 )
 from robotics_stack.simulation.dagger import GuidedSimulation
+from robotics_stack.teleoperators.guidance.authority import ControlSource
 
 
 def start_terminal_controls(controls: SimulationControls) -> None:

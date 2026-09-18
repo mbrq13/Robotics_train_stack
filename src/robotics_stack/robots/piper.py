@@ -15,7 +15,7 @@ import numpy as np
 import yaml
 
 from robotics_stack.contracts import RobotSchema
-from robotics_stack.hardware.registry import register_robot_driver
+from robotics_stack.robots.registry import register_robot_driver
 
 RAD_TO_MDEG = 1000.0 * 180.0 / np.pi
 MDEG_TO_RAD = 1.0 / RAD_TO_MDEG
@@ -123,15 +123,14 @@ class _Arm:
             if float(getattr(message, "time_stamp", 0.0)) > 0.0:
                 return
             time.sleep(0.02)
-        raise TimeoutError(
-            f"{self.port}: no Piper feedback; verify power, CAN mapping and bitrate"
-        )
+        raise TimeoutError(f"{self.port}: no Piper feedback; verify power, CAN mapping and bitrate")
 
     def _requires_reset(self) -> bool:
         status = getattr(self.sdk.GetArmStatus(), "arm_status", None)
-        return int(getattr(status, "ctrl_mode", 0)) == 0x02 or int(
-            getattr(status, "arm_status", 0)
-        ) != 0
+        return (
+            int(getattr(status, "ctrl_mode", 0)) == 0x02
+            or int(getattr(status, "arm_status", 0)) != 0
+        )
 
     def _select_joint_mode(self, speed_percent: int) -> None:
         if not 1 <= int(speed_percent) <= 100:
@@ -224,9 +223,10 @@ class _Arm:
     def target(self, joints: np.ndarray, gripper: float) -> None:
         if self.config.action_space == "normalized_100":
             normalized = np.asarray(joints, dtype=np.float64)
-            physical_degrees = self.joint_min_deg + (
-                self.joint_max_deg - self.joint_min_deg
-            ) * (normalized + 100.0) / 200.0
+            physical_degrees = (
+                self.joint_min_deg
+                + (self.joint_max_deg - self.joint_min_deg) * (normalized + 100.0) / 200.0
+            )
             self._send_joints(np.deg2rad(JOINT_SIGNS * physical_degrees))
             opening = float(np.clip(gripper / 100.0, 0.0, 1.0))
         else:

@@ -24,7 +24,7 @@ not need CAN access or camera device paths.
 
 ## 2. Review the rig contract
 
-Before connecting hardware, edit `configs/piper_station.yaml` for the actual
+Before connecting hardware, edit `configs/robots/piper_bimanual.yaml` for the actual
 CAN interface names and camera paths. Confirm these items together:
 
 - The left arm occupies action/state indices 0–6 and the right arm 7–13.
@@ -52,15 +52,15 @@ Run the preflight on the compute machine or any machine with the policy extra:
 
 ```bash
 python scripts/preflight_deployment.py \
-  --station-config configs/piper_station.yaml \
-  --worker-config configs/policy_worker.yaml \
+  --station-config configs/robots/piper_bimanual.yaml \
+  --worker-config configs/deploy/policy_worker.yaml \
   --checkpoint <checkpoint>
 ```
 
 It reads configuration and checkpoint metadata only. It rejects mismatched
 state dimensions/order, action dimensions, camera names/shapes and invalid RTC
 settings. For checkpoints whose metadata omits state names, retain the explicit
-`state_names` list in `configs/policy_worker.yaml`; dimensions alone do not
+`state_names` list in `configs/deploy/policy_worker.yaml`; dimensions alone do not
 prove that joint ordering is correct.
 
 ## 4. Profile the real observation path
@@ -68,14 +68,14 @@ prove that joint ordering is correct.
 Connect the station without arming it:
 
 ```bash
-rstack station --config configs/piper_station.yaml
+rstack station --config configs/robots/piper_bimanual.yaml
 ```
 
 Then, on the compute machine, measure the complete model path:
 
 ```bash
 python scripts/measure_policy_latency.py \
-  --config configs/policy_worker.yaml \
+  --config configs/deploy/policy_worker.yaml \
   --checkpoint <checkpoint>
 ```
 
@@ -106,7 +106,7 @@ Keep the station process running on the hardware machine. Start the policy
 worker on the compute machine:
 
 ```bash
-rstack policy --config configs/policy_worker.yaml --checkpoint <checkpoint>
+rstack policy --config configs/deploy/policy_worker.yaml --checkpoint <checkpoint>
 ```
 
 Open the station UI and follow this order:

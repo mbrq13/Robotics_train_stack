@@ -5,7 +5,7 @@ import json
 import pytest
 
 from robotics_stack.contracts import ContractError, JointLimit, RobotSchema
-from robotics_stack.policy.checkpoints import inspect_checkpoint
+from robotics_stack.policies.checkpoints import inspect_checkpoint
 
 
 def _station() -> RobotSchema:

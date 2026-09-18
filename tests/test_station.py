@@ -1,8 +1,8 @@
 import pytest
 
 from robotics_stack.contracts import JointLimit, PolicyAction, RobotSchema
-from robotics_stack.hardware.fake import FakeRobot
-from robotics_stack.runtime.station import RobotStation
+from robotics_stack.robots.fake import FakeRobot
+from robotics_stack.services.station import RobotStation
 
 
 def schema() -> RobotSchema:

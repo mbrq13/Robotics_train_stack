@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from robotics_stack.contracts import JointLimit, RobotSchema
-from robotics_stack.hardware.registry import (
+from robotics_stack.robots.registry import (
     RobotProfile,
     create_robot_driver,
     register_robot_driver,

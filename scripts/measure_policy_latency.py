@@ -12,16 +12,16 @@ import json
 import time
 from typing import Any
 
+from robotics_stack.config.loaders import load_yaml
 from robotics_stack.evaluation.latency import summarize_latency
-from robotics_stack.link.messages import parse_observation
-from robotics_stack.policy.checkpoints import DeployedPolicy, load_deployed_policy
-from robotics_stack.policy.rtc import RtcSettings
-from robotics_stack.runtime.config import load_yaml
+from robotics_stack.policies.checkpoints import DeployedPolicy, load_deployed_policy
+from robotics_stack.rollout.rtc import RtcSettings
+from robotics_stack.transport.messages import parse_observation
 
 
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Measure policy inference without sending actions")
-    parser.add_argument("--config", default="configs/policy_worker.yaml")
+    parser.add_argument("--config", default="configs/deploy/policy_worker.yaml")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--warmup", type=int, default=3)
     parser.add_argument("--samples", type=int, default=20)

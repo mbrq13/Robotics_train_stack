@@ -1,6 +1,10 @@
 import pytest
 
-from robotics_stack.guidance.authority import ControlAuthority, ControlSource, GuidancePhase
+from robotics_stack.teleoperators.guidance.authority import (
+    ControlAuthority,
+    ControlSource,
+    GuidancePhase,
+)
 
 
 def test_authority_moves_between_policy_hold_and_operator_control() -> None:

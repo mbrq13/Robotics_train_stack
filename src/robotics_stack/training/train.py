@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from robotics_stack.contracts import CheckpointManifest, RobotSchema
-from robotics_stack.policy.mlp import StateMlpPolicy, build_model
+from robotics_stack.policies.mlp import StateMlpPolicy, build_model
 
 
 @dataclass(frozen=True)

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from robotics_stack.guidance.authority import ControlSource, GuidancePhase
+from robotics_stack.teleoperators.guidance.authority import ControlSource, GuidancePhase
 
 
 @dataclass(frozen=True)
@@ -71,10 +71,9 @@ class GuidedEpisode:
                 raise ValueError("guided samples must have increasing observation ids")
             if sample.control_generation < previous.control_generation:
                 raise ValueError("control_generation cannot move backwards within an episode")
-            dimensions_changed = (
-                len(sample.state) != len(previous.state)
-                or len(sample.action) != len(previous.action)
-            )
+            dimensions_changed = len(sample.state) != len(previous.state) or len(
+                sample.action
+            ) != len(previous.action)
             if dimensions_changed:
                 raise ValueError("all guided samples in an episode must use the same dimensions")
         self._samples.append(sample)

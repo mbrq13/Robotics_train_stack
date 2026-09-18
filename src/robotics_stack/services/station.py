@@ -11,11 +11,11 @@ from typing import Any
 from robotics_stack.contracts import Observation, RobotSchema
 from robotics_stack.control.streamer import MotionStreamer
 from robotics_stack.control.supervisor import MotionSupervisor, RunState
-from robotics_stack.guidance.authority import ControlSource
-from robotics_stack.guidance.tempo import FixedRateTargetBridge, TargetBridgeSettings
-from robotics_stack.hardware.base import RobotDriver
-from robotics_stack.hardware.cameras import CameraHub
-from robotics_stack.link.messages import observation_message, parse_action
+from robotics_stack.robots.base import RobotDriver
+from robotics_stack.robots.cameras import CameraHub
+from robotics_stack.teleoperators.guidance.authority import ControlSource
+from robotics_stack.teleoperators.guidance.tempo import FixedRateTargetBridge, TargetBridgeSettings
+from robotics_stack.transport.messages import observation_message, parse_action
 
 
 @dataclass

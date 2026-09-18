@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from robotics_stack.runtime.station import RobotStation
+from robotics_stack.services.station import RobotStation
 
 
 def create_app(station: RobotStation):

@@ -1,4 +1,4 @@
-from robotics_stack.runtime.policy_agent import _trained_chunk_is_usable
+from robotics_stack.services.policy_worker import _trained_chunk_is_usable
 
 
 def test_trained_rtc_rejects_a_result_that_outruns_its_conditioned_prefix() -> None:

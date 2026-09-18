@@ -42,13 +42,13 @@ def test_preflight_validates_camera_shape_and_rtc_contract(tmp_path) -> None:
     root = Path(__file__).parents[1]
     worker = tmp_path / "worker.yaml"
     worker.write_text(
-        (root / "configs" / "policy_worker.yaml")
+        (root / "configs" / "deploy" / "policy_worker.yaml")
         .read_text(encoding="utf-8")
         .replace("execution_mode: sync", "execution_mode: rtc"),
         encoding="utf-8",
     )
     report = check_deployment(
-        root / "configs" / "piper_station.yaml",
+        root / "configs" / "robots" / "piper_bimanual.yaml",
         worker,
         _checkpoint(tmp_path / "valid", [3, 376, 672]),
     )
@@ -61,8 +61,8 @@ def test_preflight_rejects_camera_shape_mismatch(tmp_path) -> None:
     root = Path(__file__).parents[1]
     with pytest.raises(ContractError, match="camera top shape"):
         check_deployment(
-            root / "configs" / "piper_station.yaml",
-            root / "configs" / "policy_worker.yaml",
+            root / "configs" / "robots" / "piper_bimanual.yaml",
+            root / "configs" / "deploy" / "policy_worker.yaml",
             _checkpoint(tmp_path / "invalid", [3, 480, 640]),
         )
 
@@ -71,14 +71,14 @@ def test_preflight_rejects_rtc_queue_that_expires_before_its_last_action(tmp_pat
     root = Path(__file__).parents[1]
     station = tmp_path / "station.yaml"
     station.write_text(
-        (root / "configs" / "piper_station.yaml")
+        (root / "configs" / "robots" / "piper_bimanual.yaml")
         .read_text(encoding="utf-8")
         .replace("scheduled_action_age_ms: 1000", "scheduled_action_age_ms: 500"),
         encoding="utf-8",
     )
     worker = tmp_path / "worker.yaml"
     worker.write_text(
-        (root / "configs" / "policy_worker.yaml")
+        (root / "configs" / "deploy" / "policy_worker.yaml")
         .read_text(encoding="utf-8")
         .replace("execution_mode: sync", "execution_mode: rtc"),
         encoding="utf-8",
@@ -91,14 +91,14 @@ def test_preflight_rejects_action_space_disagreement(tmp_path) -> None:
     root = Path(__file__).parents[1]
     worker = tmp_path / "worker.yaml"
     worker.write_text(
-        (root / "configs" / "policy_worker.yaml")
+        (root / "configs" / "deploy" / "policy_worker.yaml")
         .read_text(encoding="utf-8")
         .replace("action_space: radians", "action_space: normalized_100"),
         encoding="utf-8",
     )
     with pytest.raises(ContractError, match="action_space"):
         check_deployment(
-            root / "configs" / "piper_station.yaml",
+            root / "configs" / "robots" / "piper_bimanual.yaml",
             worker,
             _checkpoint(tmp_path / "valid", [3, 376, 672]),
         )
@@ -108,14 +108,14 @@ def test_preflight_rejects_robot_type_disagreement(tmp_path) -> None:
     root = Path(__file__).parents[1]
     worker = tmp_path / "worker.yaml"
     worker.write_text(
-        (root / "configs" / "policy_worker.yaml")
+        (root / "configs" / "deploy" / "policy_worker.yaml")
         .read_text(encoding="utf-8")
         .replace("robot_type: piper", "robot_type: another_robot"),
         encoding="utf-8",
     )
     with pytest.raises(ContractError, match="robot_type"):
         check_deployment(
-            root / "configs" / "piper_station.yaml",
+            root / "configs" / "robots" / "piper_bimanual.yaml",
             worker,
             _checkpoint(tmp_path / "valid", [3, 376, 672]),
         )
@@ -125,7 +125,7 @@ def test_preflight_rejects_smoothing_for_rtc(tmp_path) -> None:
     root = Path(__file__).parents[1]
     worker = tmp_path / "worker.yaml"
     worker.write_text(
-        (root / "configs" / "policy_worker.yaml")
+        (root / "configs" / "deploy" / "policy_worker.yaml")
         .read_text(encoding="utf-8")
         .replace("execution_mode: sync", "execution_mode: rtc")
         .replace("action_smoothing_alpha: 1.0", "action_smoothing_alpha: 0.5"),
@@ -133,7 +133,7 @@ def test_preflight_rejects_smoothing_for_rtc(tmp_path) -> None:
     )
     with pytest.raises(ContractError, match="not supported with RTC"):
         check_deployment(
-            root / "configs" / "piper_station.yaml",
+            root / "configs" / "robots" / "piper_bimanual.yaml",
             worker,
             _checkpoint(tmp_path / "valid", [3, 376, 672]),
         )

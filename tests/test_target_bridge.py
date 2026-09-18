@@ -1,6 +1,6 @@
 import pytest
 
-from robotics_stack.guidance.tempo import (
+from robotics_stack.teleoperators.guidance.tempo import (
     FixedRateTargetBridge,
     TargetBridgeSettings,
     TargetTimeline,
@@ -57,7 +57,8 @@ def test_bridge_timestamps_an_unstamped_target_on_the_local_clock(monkeypatch) -
         lambda: None,
         settings=TargetBridgeSettings(),
     )
-    monkeypatch.setattr("robotics_stack.guidance.tempo.time.perf_counter", lambda: 42.0)
+    clock = "robotics_stack.teleoperators.guidance.tempo.time.perf_counter"
+    monkeypatch.setattr(clock, lambda: 42.0)
 
     bridge.submit((0.1,), reset=True)
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from robotics_stack.policy.mlp import StateMlpPolicy
+from robotics_stack.policies.mlp import StateMlpPolicy
 
 
 @dataclass(frozen=True)

@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Any
 
 from robotics_stack.contracts import Observation, PolicyAction, RobotSchema
-from robotics_stack.link.messages import action_message, parse_observation
-from robotics_stack.policy.checkpoints import DeployedPolicy, load_deployed_policy
-from robotics_stack.policy.rtc import LatencyTracker, RtcActionQueue, RtcSettings
-from robotics_stack.runtime.action_smoothing import ExponentialActionSmoother
+from robotics_stack.policies.checkpoints import DeployedPolicy, load_deployed_policy
+from robotics_stack.rollout.rtc import LatencyTracker, RtcActionQueue, RtcSettings
+from robotics_stack.rollout.smoothing import ExponentialActionSmoother
+from robotics_stack.transport.messages import action_message, parse_observation
 
 
 def _trained_chunk_is_usable(
@@ -168,10 +168,7 @@ async def _run_rtc_agent(
                     )
                     continue
                 # Ignore work produced for a replaced session.
-                if (
-                    active_session != session_at_start
-                    or active_generation != generation_at_start
-                ):
+                if active_session != session_at_start or active_generation != generation_at_start:
                     continue
                 queue.merge(
                     chunk,

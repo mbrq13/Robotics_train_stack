@@ -8,8 +8,8 @@ from typing import Any
 import yaml
 
 from robotics_stack.contracts import RobotSchema
-from robotics_stack.hardware.cameras import CameraConfig
-from robotics_stack.hardware.registry import RobotProfile
+from robotics_stack.robots.cameras import CameraConfig
+from robotics_stack.robots.registry import RobotProfile
 
 
 def load_yaml(path: str | Path) -> dict[str, Any]:
