@@ -15,6 +15,7 @@ import numpy as np
 import yaml
 
 from robotics_stack.contracts import RobotSchema
+from robotics_stack.hardware.registry import register_robot_driver
 
 RAD_TO_MDEG = 1000.0 * 180.0 / np.pi
 MDEG_TO_RAD = 1.0 / RAD_TO_MDEG
@@ -42,7 +43,7 @@ class PiperConnection:
     feedback_timeout_s: float = 1.5
     startup_speed_percent: int = 10
     motion_speed_percent: int = 100
-    action_space: str = "normalized_100"
+    action_space: str = "radians"
     gripper_calibration_file: str | None = None
 
 
@@ -282,3 +283,10 @@ class BiPiper:
 
     def home(self) -> None:
         self.set_target(tuple(0.0 for _ in range(14)))
+
+
+def _build_bimanual_piper(schema: RobotSchema, options: dict[str, Any]) -> BiPiper:
+    return BiPiper(schema, PiperConnection(**options))
+
+
+register_robot_driver("piper_bimanual", _build_bimanual_piper)

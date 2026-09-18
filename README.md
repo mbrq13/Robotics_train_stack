@@ -47,4 +47,5 @@ See [deployment](docs/deployment.md), [guided simulation](docs/simulation.md), [
 [operations](docs/operations.md) and [architecture](docs/architecture.md) for
 the corresponding workflows. See [guided collection](docs/guided_collection.md)
 for correction-data provenance and [technical validation](docs/validation_basis.md)
-for the runtime assumptions and commissioning evidence.
+for the runtime assumptions and commissioning evidence. See [inference modes](docs/inference.md)
+and [robot profiles](docs/robot_profiles.md) for deployment boundaries.

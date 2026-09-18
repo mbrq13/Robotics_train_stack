@@ -74,3 +74,26 @@ def test_pi05_requires_explicit_state_order_when_not_in_checkpoint(tmp_path) -> 
     )
     with pytest.raises(ContractError, match="state order"):
         inspect_checkpoint(tmp_path).validate_station(_station())
+
+
+def test_pi05_descriptor_finds_a_saved_best_checkpoint_and_relative_metadata(tmp_path) -> None:
+    artifact = tmp_path / "checkpoints" / "best_mean" / "pretrained_model"
+    artifact.mkdir(parents=True)
+    (artifact / "config.json").write_text(
+        json.dumps(
+            {
+                "type": "pi05",
+                "input_features": {"observation.state": {"shape": [14]}},
+                "output_features": {"action": {"shape": [14]}},
+                "chunk_size": 50,
+                "use_relative_actions": True,
+                "relative_exclude_joints": ["left_gripper", "right_gripper"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    descriptor = inspect_checkpoint(tmp_path, state_names=_station().state_names)
+
+    assert descriptor.relative_actions is True
+    assert descriptor.relative_exclude_joints == ("left_gripper", "right_gripper")

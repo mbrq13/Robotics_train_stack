@@ -50,6 +50,9 @@ def test_rtc_queue_preserves_in_flight_prefix_and_skips_conditioned_chunk_prefix
     first_new = list(queue._items)[1]
     assert tuple(first_new.action) == (122, 122.5)
     assert first_new.control_generation == 5
+    leftovers = queue.actions_left_over()
+    assert leftovers is not None
+    assert leftovers.shape == (4, 2)
 
 
 def test_rtc_settings_rejects_horizon_without_training_margin() -> None:

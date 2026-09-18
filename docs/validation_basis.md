@@ -14,11 +14,11 @@ the required fallback when a checkpoint does not declare names.
 
 Pi0.5 normalizes state and action using statistics saved with the trained
 artifact. The station must therefore provide the physical representation used
-to collect that artifact. The supplied Piper profile represents joints as
-`-100..100` across the per-arm calibrated range and gripper opening as
-`0..100`. At connection the driver queries each actuator limit, uses the
-documented firmware range only when a query is unavailable, applies the
-device's axis convention, and converts at the final CAN call. The conversion
+to collect that artifact. The supplied Piper profile represents joints in
+physical radians and gripper opening as `0..1`. At connection the driver
+queries each actuator limit, uses the documented firmware range only when a
+query is unavailable, applies the device's axis convention when the selected
+profile requires it, and converts at the final CAN call. The conversion
 has unit tests for both endpoints and midpoint; it still requires an unloaded
 on-rig confirmation of axis direction and gripper endpoints.
 

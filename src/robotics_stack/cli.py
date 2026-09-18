@@ -9,7 +9,7 @@ import json
 from robotics_stack.evaluation.replay import evaluate_state_mlp
 from robotics_stack.hardware.cameras import CameraHub
 from robotics_stack.hardware.fake import FakeRobot
-from robotics_stack.hardware.piper import BiPiper
+from robotics_stack.hardware.registry import create_robot_driver
 from robotics_stack.learning.pi05 import run_pi05_training
 from robotics_stack.learning.train import train_state_mlp
 from robotics_stack.policy.checkpoints import inspect_checkpoint
@@ -19,8 +19,8 @@ from robotics_stack.runtime.station import RobotStation
 
 
 def _station(args: argparse.Namespace) -> None:
-    schema, station_cfg, piper_cfg = load_station_config(args.config)
-    robot = FakeRobot(schema) if args.fake else BiPiper(schema, piper_cfg)
+    schema, station_cfg, profile = load_station_config(args.config)
+    robot = FakeRobot(schema) if args.fake else create_robot_driver(schema, profile)
     cameras = None if args.fake else CameraHub(load_camera_configs(load_yaml(args.config)))
     station = RobotStation(
         robot,
@@ -108,6 +108,7 @@ def _simulate(args: argparse.Namespace) -> None:
         task=str(worker.get("task", "")),
         device=str(worker.get("device", "cuda")),
         state_names=tuple(str(name) for name in worker.get("state_names", [])),
+        robot_type=str(worker.get("robot_type", "")),
     )
     policy.descriptor.validate_station(schema)
     simulation = GuidedSimulation(schema, replay, policy, task=args.task)
@@ -212,8 +213,9 @@ def _policy(args: argparse.Namespace) -> None:
             device=str(config.get("device", "cuda")),
             schema_version=int(config.get("schema_version", 1)),
             state_names=tuple(str(name) for name in config.get("state_names", [])),
+            robot_type=str(config.get("robot_type", "")),
             expected_action_space=str(config.get("action_space", "")),
-            execution_mode=str(config.get("execution_mode", "standard")),
+            execution_mode=str(config.get("execution_mode", "sync")),
             rtc_execution_horizon=int(config["rtc_execution_horizon"])
             if "rtc_execution_horizon" in config
             else None,

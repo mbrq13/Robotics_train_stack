@@ -35,6 +35,7 @@ class RobotSchema:
     joint_limits: tuple[JointLimit, ...]
     camera_names: tuple[str, ...] = ()
     action_space: str = ""
+    robot_type: str = ""
     control_hz: float = 30.0
     version: int = SCHEMA_VERSION
 
@@ -71,6 +72,7 @@ class RobotSchema:
             joint_limits=tuple(JointLimit(**limit) for limit in value["joint_limits"]),
             camera_names=tuple(value.get("camera_names", [])),
             action_space=str(value.get("action_space", "")),
+            robot_type=str(value.get("robot_type", "")),
             control_hz=float(value.get("control_hz", 30.0)),
             version=int(value.get("version", SCHEMA_VERSION)),
         )

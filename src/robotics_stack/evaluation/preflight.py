@@ -33,18 +33,24 @@ def check_deployment(
     checkpoint: str | Path,
 ) -> DeploymentPreflight:
     """Reject mismatched checkpoint, camera and RTC settings without loading weights."""
-    schema, station, piper = load_station_config(station_config)
+    schema, station, profile = load_station_config(station_config)
     worker = load_yaml(worker_config)
     expected_action_space = str(worker.get("action_space", ""))
-    if expected_action_space and piper.action_space != expected_action_space:
+    expected_robot_type = str(worker.get("robot_type", ""))
+    if expected_action_space and profile.action_space != expected_action_space:
         raise ContractError(
             "worker action_space does not match station hardware profile: "
-            f"worker={expected_action_space!r}, station={piper.action_space!r}"
+            f"worker={expected_action_space!r}, station={profile.action_space!r}"
         )
-    if schema.action_space and schema.action_space != piper.action_space:
+    if schema.action_space and schema.action_space != profile.action_space:
         raise ContractError(
             "station schema action_space does not match hardware profile: "
-            f"schema={schema.action_space!r}, hardware={piper.action_space!r}"
+            f"schema={schema.action_space!r}, hardware={profile.action_space!r}"
+        )
+    if expected_robot_type and schema.robot_type != expected_robot_type:
+        raise ContractError(
+            "worker robot_type does not match station schema: "
+            f"worker={expected_robot_type!r}, station={schema.robot_type!r}"
         )
     state_names = tuple(str(name) for name in worker.get("state_names", ()))
     descriptor = inspect_checkpoint(checkpoint, state_names=state_names)
@@ -57,9 +63,11 @@ def check_deployment(
             actual = camera_shapes.get(name)
             raise ContractError(f"camera {name} shape station={actual}, checkpoint={expected}")
 
-    execution_mode = str(worker.get("execution_mode", "standard"))
-    if execution_mode not in {"standard", "rtc"}:
-        raise ValueError("execution_mode must be standard or rtc")
+    execution_mode = str(worker.get("execution_mode", "sync"))
+    if execution_mode == "standard":
+        execution_mode = "sync"
+    if execution_mode not in {"sync", "rtc"}:
+        raise ValueError("execution_mode must be sync or rtc")
     if execution_mode == "rtc":
         delay = descriptor.rtc_training_max_delay
         if delay <= 0:
@@ -83,4 +91,4 @@ def check_deployment(
                 f"({scheduled_age_ms:.1f} ms < {minimum_scheduled_age_ms:.1f} ms)"
             )
 
-    return DeploymentPreflight(descriptor, execution_mode, piper.action_space, camera_shapes)
+    return DeploymentPreflight(descriptor, execution_mode, profile.action_space, camera_shapes)

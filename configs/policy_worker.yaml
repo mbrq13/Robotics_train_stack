@@ -5,9 +5,11 @@ task: ""
 device: cuda
 schema_version: 1
 # Representation expected by the checkpoint and hardware station profile.
-action_space: normalized_100
-# Use `rtc` only with an RTC-trained checkpoint.
-execution_mode: standard
+action_space: radians
+robot_type: piper
+# `sync` is the universal one-call-per-tick mode. Use `rtc` only with a
+# checkpoint trained for RTC. The former name `standard` remains accepted.
+execution_mode: sync
 rtc_execution_horizon: 10
 rtc_refill_threshold: 10
 # Explicit state ordering for checkpoints that omit semantic names.

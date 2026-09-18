@@ -99,6 +99,12 @@ class RtcActionQueue:
             return None
         return np.stack([item.raw for item in self._items]).astype(np.float32, copy=False)
 
+    def actions_left_over(self) -> np.ndarray | None:
+        """Return robot-space queue leftovers for relative-action re-anchoring."""
+        if not self._items:
+            return None
+        return np.stack([item.action for item in self._items]).astype(np.float32, copy=False)
+
     def pop(self) -> QueuedAction | None:
         if not self._items:
             self.underruns += 1

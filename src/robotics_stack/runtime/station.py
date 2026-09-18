@@ -172,7 +172,7 @@ class RobotStation:
     def home(self) -> None:
         self.pause("home requested")
         if self.home_action is None:
-            raise RuntimeError("home is not configured for this Piper rig")
+            raise RuntimeError("home is not configured for this station profile")
         if self._streamer is None:
             self.robot.set_target(self.home_action)
         else:

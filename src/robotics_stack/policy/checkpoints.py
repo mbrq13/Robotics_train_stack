@@ -21,6 +21,8 @@ from robotics_stack.contracts import CheckpointManifest, ContractError, Observat
 from robotics_stack.policy.mlp import StateMlpPolicy
 from robotics_stack.policy.rtc import RtcChunk, RtcSettings
 
+_NESTED_ARTIFACT = Path("checkpoints/best_mean/pretrained_model")
+
 
 def _checkpoint_file(checkpoint: str | Path, filename: str) -> Path:
     root = Path(checkpoint)
@@ -36,6 +38,34 @@ def _checkpoint_file(checkpoint: str | Path, filename: str) -> Path:
             "install the policy-lerobot extra to inspect a Hugging Face checkpoint"
         ) from exc
     return Path(hf_hub_download(repo_id=str(checkpoint), filename=filename))
+
+
+def _policy_config_path(checkpoint: str | Path) -> tuple[Path, Path]:
+    """Locate a policy config at a repository root or a saved best checkpoint."""
+    failures: list[Exception] = []
+    for relative in (Path("config.json"), _NESTED_ARTIFACT / "config.json"):
+        try:
+            return _checkpoint_file(checkpoint, str(relative)), relative.parent
+        except (FileNotFoundError, OSError) as exc:
+            failures.append(exc)
+    raise FileNotFoundError(f"no deployable policy config found in {checkpoint}") from failures[-1]
+
+
+def _materialize_policy_root(checkpoint: str | Path) -> Path:
+    """Return a local artifact directory, downloading only when a Hub id is used."""
+    config_path, relative_root = _policy_config_path(checkpoint)
+    root = Path(checkpoint)
+    if root.is_dir():
+        return config_path.parent
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        raise RuntimeError("install huggingface_hub to load a Hugging Face checkpoint") from exc
+    prefix = "" if relative_root == Path(".") else f"{relative_root.as_posix()}/"
+    cached_root = Path(
+        snapshot_download(repo_id=str(checkpoint), allow_patterns=[f"{prefix}**"])
+    )
+    return cached_root / relative_root
 
 
 def _feature_shape(feature: Any) -> tuple[int, ...]:
@@ -64,6 +94,8 @@ class CheckpointDescriptor:
     source: str
     rtc_training_max_delay: int = 0
     chunk_size: int = 0
+    relative_actions: bool = False
+    relative_exclude_joints: tuple[str, ...] = ()
 
     def validate_station(self, schema: RobotSchema) -> None:
         failures: list[str] = []
@@ -112,7 +144,7 @@ def inspect_checkpoint(
             source=str(root),
         )
 
-    config_path = _checkpoint_file(checkpoint, "config.json")
+    config_path, _ = _policy_config_path(checkpoint)
     config = json.loads(config_path.read_text(encoding="utf-8"))
     if config.get("type") != "pi05":
         raise ValueError(f"unsupported external policy type: {config.get('type')!r}")
@@ -141,6 +173,8 @@ def inspect_checkpoint(
         source=str(checkpoint),
         rtc_training_max_delay=int(config.get("rtc_training_max_delay", 0) or 0),
         chunk_size=int(config.get("chunk_size", 0) or 0),
+        relative_actions=bool(config.get("use_relative_actions", False)),
+        relative_exclude_joints=tuple(config.get("relative_exclude_joints", ())),
     )
 
 
@@ -157,6 +191,7 @@ class DeployedPolicy(Protocol):
         *,
         inference_delay_steps: int,
         previous_raw_actions: np.ndarray | None,
+        previous_actions: np.ndarray | None = None,
     ) -> RtcChunk: ...
 
 
@@ -187,8 +222,9 @@ class NativePolicy:
         *,
         inference_delay_steps: int,
         previous_raw_actions: np.ndarray | None,
+        previous_actions: np.ndarray | None = None,
     ) -> RtcChunk:
-        del observation, inference_delay_steps, previous_raw_actions
+        del observation, inference_delay_steps, previous_raw_actions, previous_actions
         raise ValueError("native state_mlp artifacts do not implement chunked RTC inference")
 
 
@@ -201,9 +237,11 @@ class LeRobotPi05Policy:
         task: str,
         device: str,
         state_names: tuple[str, ...] = (),
+        robot_type: str = "",
     ):
-        self.checkpoint = str(checkpoint)
+        self.checkpoint = str(_materialize_policy_root(checkpoint))
         self.task = task
+        self.robot_type = robot_type
         self.descriptor = inspect_checkpoint(checkpoint, state_names=state_names)
         try:
             import torch
@@ -284,7 +322,7 @@ class LeRobotPi05Policy:
             else nullcontext()
         )
         with self._torch.inference_mode(), amp:
-            batch = self._prepare_observation(frame, self._device, self.task, "bipiper")
+            batch = self._prepare_observation(frame, self._device, self.task, self.robot_type)
             action = self._postprocessor(self._policy.select_action(self._preprocessor(batch)))
         values = self._as_array(action).reshape(-1)
         if values.size != self.descriptor.action_dim or not np.isfinite(values).all():
@@ -336,6 +374,7 @@ class LeRobotPi05Policy:
         *,
         inference_delay_steps: int,
         previous_raw_actions: np.ndarray | None,
+        previous_actions: np.ndarray | None = None,
     ) -> RtcChunk:
         frame = self._frame(observation)
         amp = (
@@ -353,8 +392,10 @@ class LeRobotPi05Policy:
             )
         )
         with self._torch.inference_mode(), amp:
-            batch = self._prepare_observation(frame, self._device, self.task, "bipiper")
+            batch = self._prepare_observation(frame, self._device, self.task, self.robot_type)
             processed = self._preprocessor(batch)
+            if self.descriptor.relative_actions and previous_actions is not None:
+                previous = self._reanchor_relative_prefix(previous_actions)
             raw_chunk = self._policy.predict_action_chunk(
                 processed,
                 inference_delay=max(0, int(inference_delay_steps)),
@@ -371,6 +412,47 @@ class LeRobotPi05Policy:
             raise ContractError("Pi0.5 RTC returned an invalid action chunk")
         return RtcChunk(raw=raw, actions=output)
 
+    def _reanchor_relative_prefix(self, previous_actions: np.ndarray) -> Any:
+        """Express absolute queued targets in the current relative-action frame."""
+        try:
+            from lerobot.policies.rtc import reanchor_relative_rtc_prefix
+            from lerobot.processor import NormalizerProcessorStep, RelativeActionsProcessorStep
+        except ImportError as exc:
+            raise RuntimeError(
+                "the installed LeRobot version lacks relative-action RTC support"
+            ) from exc
+        relative_step = next(
+            (
+                step
+                for step in self._preprocessor.steps
+                if isinstance(step, RelativeActionsProcessorStep) and step.enabled
+            ),
+            None,
+        )
+        if relative_step is None:
+            raise RuntimeError("relative checkpoint is missing its relative-action processor")
+        current_state = relative_step.get_cached_state()
+        if current_state is None:
+            raise RuntimeError("relative-action processor did not retain the current state")
+        normalizer_step = next(
+            (
+                step
+                for step in self._preprocessor.steps
+                if isinstance(step, NormalizerProcessorStep)
+            ),
+            None,
+        )
+        absolute = self._torch.as_tensor(
+            previous_actions, device=self._device, dtype=self._torch.float32
+        )
+        return reanchor_relative_rtc_prefix(
+            prev_actions_absolute=absolute,
+            current_state=current_state,
+            relative_step=relative_step,
+            normalizer_step=normalizer_step,
+            policy_device=self._device,
+        )
+
 
 def load_deployed_policy(
     checkpoint: str | Path,
@@ -378,10 +460,11 @@ def load_deployed_policy(
     task: str = "",
     device: str = "cuda",
     state_names: tuple[str, ...] = (),
+    robot_type: str = "",
 ) -> DeployedPolicy:
     """Load a native artifact or a standard LeRobot Pi0.5 checkpoint."""
     root = Path(checkpoint)
     if root.is_dir() and (root / "manifest.json").is_file():
         policy, manifest = StateMlpPolicy.load(root)
         return NativePolicy(policy, manifest)
-    return LeRobotPi05Policy(checkpoint, task, device, state_names)
+    return LeRobotPi05Policy(checkpoint, task, device, state_names, robot_type)

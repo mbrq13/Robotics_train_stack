@@ -15,6 +15,15 @@ from robotics_stack.policy.checkpoints import DeployedPolicy, load_deployed_poli
 from robotics_stack.policy.rtc import LatencyTracker, RtcActionQueue, RtcSettings
 
 
+def _trained_chunk_is_usable(
+    *, conditioned_delay: int, measured_delay: int, training_max_delay: int, has_prefix: bool
+) -> bool:
+    """Require a trained prefix to cover every control step elapsed in inference."""
+    if not has_prefix:
+        return measured_delay <= training_max_delay
+    return measured_delay <= training_max_delay and measured_delay <= conditioned_delay
+
+
 async def _run_standard_agent(websocket: Any, policy: DeployedPolicy, schema: RobotSchema) -> None:
     sequence_id = 0
     async for raw_message in websocket:
@@ -100,6 +109,7 @@ async def _run_rtc_agent(
             observation, session_at_start = latest
             generation_at_start = observation.control_generation
             previous_raw = queue.raw_left_over()
+            previous_actions = queue.actions_left_over()
             expected_delay = latency.delay_steps(settings.control_hz)
             if expected_delay > settings.training_max_delay:
                 await send(
@@ -121,17 +131,22 @@ async def _run_rtc_agent(
                     observation,
                     inference_delay_steps=expected_delay,
                     previous_raw_actions=previous_raw,
+                    previous_actions=previous_actions,
                 )
                 elapsed_s = time.perf_counter() - started_at
                 measured_delay = math.ceil(elapsed_s * settings.control_hz)
                 latency.add(elapsed_s)
-                if measured_delay > settings.training_max_delay:
+                if not _trained_chunk_is_usable(
+                    conditioned_delay=expected_delay,
+                    measured_delay=measured_delay,
+                    training_max_delay=settings.training_max_delay,
+                    has_prefix=previous_raw is not None,
+                ):
                     await send(
                         {
                             "type": "rtc_status",
                             "error": (
-                                "inference result exceeded the checkpoint RTC training limit; "
-                                "chunk discarded"
+                                "inference elapsed beyond its trained RTC prefix; chunk discarded"
                             ),
                             "enabled": True,
                             **latency.snapshot(),
@@ -214,8 +229,9 @@ async def run_policy_agent(
     device: str = "cuda",
     schema_version: int = 1,
     state_names: tuple[str, ...] = (),
+    robot_type: str = "",
     expected_action_space: str = "",
-    execution_mode: str = "standard",
+    execution_mode: str = "sync",
     rtc_execution_horizon: int | None = None,
     rtc_refill_threshold: int | None = None,
 ) -> None:
@@ -223,10 +239,12 @@ async def run_policy_agent(
         from websockets.asyncio.client import connect
     except ImportError as exc:
         raise RuntimeError("install the policy extra to run a policy agent") from exc
-    if execution_mode not in {"standard", "rtc"}:
-        raise ValueError("execution_mode must be 'standard' or 'rtc'")
+    if execution_mode == "standard":
+        execution_mode = "sync"  # Compatibility with early stack configurations.
+    if execution_mode not in {"sync", "rtc"}:
+        raise ValueError("execution_mode must be 'sync' or 'rtc'")
     policy = load_deployed_policy(
-        checkpoint, task=task, device=device, state_names=state_names
+        checkpoint, task=task, device=device, state_names=state_names, robot_type=robot_type
     )
     async with connect(url, max_size=8 * 1024 * 1024) as websocket:
         await websocket.send(json.dumps({"type": "hello", "schema_version": schema_version}))
@@ -239,8 +257,13 @@ async def run_policy_agent(
                 "station action space does not match the worker configuration: "
                 f"station={schema.action_space!r}, worker={expected_action_space!r}"
             )
+        if robot_type and schema.robot_type != robot_type:
+            raise RuntimeError(
+                "station robot type does not match the worker configuration: "
+                f"station={schema.robot_type!r}, worker={robot_type!r}"
+            )
         policy.descriptor.validate_station(schema)
-        if execution_mode == "standard":
+        if execution_mode == "sync":
             await _run_standard_agent(websocket, policy, schema)
             return
         training_delay = policy.descriptor.rtc_training_max_delay

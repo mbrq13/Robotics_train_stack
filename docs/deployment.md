@@ -32,8 +32,7 @@ CAN interface names and camera paths. Confirm these items together:
 - The gripper endpoint file, if used, contains independent measured endpoints
   for both arms.
 - The selected action representation matches the checkpoint. The supplied
-  profile is `normalized_100`: joints use `-100..100` and grippers use
-  `0..100`, rather than radians and unit gripper opening.
+  profile is `radians`: joints use physical radians and grippers use `0..1`.
 - Joint position limits are read from each actuator during connection. Confirm
   the resulting range and the gripper endpoints for this particular rig.
 

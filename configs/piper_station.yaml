@@ -33,23 +33,24 @@ schema:
     - right_joint_6
     - right_gripper
   camera_names: [left, top, right]
-  action_space: normalized_100
-  # Logical control coordinates for the calibrated Piper profile.
+  action_space: radians
+  robot_type: piper
+  # Physical joint coordinates in radians and normalized gripper opening.
   joint_limits:
-    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
-    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
-    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
-    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
-    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
-    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
-    - {minimum: 0.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
-    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
-    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
-    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
-    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
-    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
-    - {minimum: -100.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
-    - {minimum: 0.0, maximum: 100.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -2.617993878, maximum: 2.617993878, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: 0.0, maximum: 3.141592654, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -2.967059728, maximum: 0.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -1.745329252, maximum: 1.745329252, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -1.221730476, maximum: 1.221730476, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -2.094395102, maximum: 2.094395102, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: 0.0, maximum: 1.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -2.617993878, maximum: 2.617993878, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: 0.0, maximum: 3.141592654, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -2.967059728, maximum: 0.0, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -1.745329252, maximum: 1.745329252, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -1.221730476, maximum: 1.221730476, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: -2.094395102, maximum: 2.094395102, max_speed: 1000.0, max_acceleration: 10000.0}
+    - {minimum: 0.0, maximum: 1.0, max_speed: 1000.0, max_acceleration: 10000.0}
 
 station:
   host: 0.0.0.0
@@ -66,16 +67,18 @@ station:
   # Optional approved home pose.
   # home_action: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-piper:
-  left_port: can0
-  right_port: can1
-  gripper_min_microm: 0
-  gripper_max_microm: 70000
-  gripper_effort: 1000
-  action_space: normalized_100
-  enable_timeout_s: 10
-  # Optional per-arm endpoint calibration.
-  # gripper_calibration_file: /opt/robotics/piper_grippers.yaml
+robot:
+  driver: piper_bimanual
+  action_space: radians
+  options:
+    left_port: can0
+    right_port: can1
+    gripper_min_microm: 0
+    gripper_max_microm: 70000
+    gripper_effort: 1000
+    enable_timeout_s: 10
+    # Optional per-arm endpoint calibration.
+    # gripper_calibration_file: /opt/robotics/piper_grippers.yaml
 
 cameras:
   - {name: left, device: /dev/v4l/by-path/REPLACE-left-video-index0, width: 640, height: 480, fps: 30}

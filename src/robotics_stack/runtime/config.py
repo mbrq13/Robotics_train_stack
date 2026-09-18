@@ -9,7 +9,7 @@ import yaml
 
 from robotics_stack.contracts import RobotSchema
 from robotics_stack.hardware.cameras import CameraConfig
-from robotics_stack.hardware.piper import PiperConnection
+from robotics_stack.hardware.registry import RobotProfile
 
 
 def load_yaml(path: str | Path) -> dict[str, Any]:
@@ -20,12 +20,14 @@ def load_yaml(path: str | Path) -> dict[str, Any]:
     return value
 
 
-def load_station_config(path: str | Path) -> tuple[RobotSchema, dict[str, Any], PiperConnection]:
+def load_station_config(path: str | Path) -> tuple[RobotSchema, dict[str, Any], RobotProfile]:
     value = load_yaml(path)
     schema = RobotSchema.from_dict(value["schema"])
     station = value.get("station", {})
-    piper = PiperConnection(**value.get("piper", {}))
-    return schema, station, piper
+    profile = RobotProfile.from_dict(value["robot"])
+    if schema.action_space != profile.action_space:
+        raise ValueError("schema.action_space must match robot.action_space")
+    return schema, station, profile
 
 
 def load_camera_configs(value: dict[str, Any]) -> list[CameraConfig]:
