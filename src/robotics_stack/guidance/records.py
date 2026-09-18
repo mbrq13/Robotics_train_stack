@@ -22,6 +22,7 @@ class GuidedSample:
     action: tuple[float, ...]
     phase: GuidancePhase
     control_generation: int
+    images: dict[str, bytes] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.observation_id < 0 or self.control_generation < 0:
@@ -36,6 +37,12 @@ class GuidedSample:
             GuidancePhase.CORRECTION,
         }:
             raise ValueError("only motion-producing phases can be written as guided samples")
+        valid_images = all(
+            isinstance(name, str) and isinstance(image, bytes)
+            for name, image in self.images.items()
+        )
+        if not valid_images:
+            raise ValueError("guided images must map camera names to encoded bytes")
 
     @property
     def source(self) -> ControlSource:
@@ -80,18 +87,29 @@ class GuidedEpisode:
         if output.suffix != ".npz":
             output = output.with_suffix(".npz")
         output.parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(
-            output,
-            states=np.asarray([sample.state for sample in self._samples], dtype=np.float32),
-            actions=np.asarray([sample.action for sample in self._samples], dtype=np.float32),
-            operator_mask=np.asarray(
+        payload: dict[str, np.ndarray] = {
+            "states": np.asarray([sample.state for sample in self._samples], dtype=np.float32),
+            "actions": np.asarray([sample.action for sample in self._samples], dtype=np.float32),
+            "operator_mask": np.asarray(
                 [sample.source is ControlSource.OPERATOR for sample in self._samples],
                 dtype=np.bool_,
             ),
-            control_generation=np.asarray(
+            "control_generation": np.asarray(
                 [sample.control_generation for sample in self._samples], dtype=np.int64
             ),
-            phase=np.asarray([sample.phase.value for sample in self._samples]),
+            "phase": np.asarray([sample.phase.value for sample in self._samples]),
+        }
+        camera_sets = {tuple(sorted(sample.images)) for sample in self._samples}
+        if len(camera_sets) != 1:
+            raise ValueError("all guided samples must contain the same camera set")
+        for name in next(iter(camera_sets), ()):
+            images = [sample.images[name] for sample in self._samples]
+            offsets = np.cumsum([0, *(len(image) for image in images)], dtype=np.int64)
+            payload[f"images_{name}_bytes"] = np.frombuffer(b"".join(images), dtype=np.uint8)
+            payload[f"images_{name}_offsets"] = offsets
+        np.savez_compressed(
+            output,
+            **payload,
         )
         output.with_suffix(".json").write_text(
             json.dumps(self.summary(), indent=2), encoding="utf-8"

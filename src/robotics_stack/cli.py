@@ -92,6 +92,57 @@ def _train_pi05(args: argparse.Namespace) -> None:
     print(" ".join(command))
 
 
+def _simulate(args: argparse.Namespace) -> None:
+    """Run an offline, visual guided-collection dry run from replayed frames."""
+    from robotics_stack.policy.checkpoints import load_deployed_policy
+    from robotics_stack.simulation.controls import SimulationControls
+    from robotics_stack.simulation.dagger import DatasetReplay, GuidedSimulation
+    from robotics_stack.simulation.operator_input import OperatorTargetReceiver
+    from robotics_stack.simulation.runner import run_guided_simulation, start_terminal_controls
+
+    schema, _, _ = load_station_config(args.schema)
+    worker = load_yaml(args.config)
+    replay = DatasetReplay.from_npz(args.dataset, camera_names=schema.camera_names)
+    policy = load_deployed_policy(
+        args.checkpoint,
+        task=str(worker.get("task", "")),
+        device=str(worker.get("device", "cuda")),
+        state_names=tuple(str(name) for name in worker.get("state_names", [])),
+    )
+    policy.descriptor.validate_station(schema)
+    simulation = GuidedSimulation(schema, replay, policy, task=args.task)
+    controls = SimulationControls()
+    receiver = None
+    if args.operator_udp_port is not None:
+        receiver = OperatorTargetReceiver(
+            controls, action_size=schema.action_size, port=args.operator_udp_port
+        )
+        receiver.start()
+        print(f"Local operator-target UDP input: 127.0.0.1:{args.operator_udp_port}")
+    panel = None
+    if not args.no_viser:
+        from robotics_stack.simulation.viser_panel import ViserGuidancePanel
+
+        panel = ViserGuidancePanel(schema, controls, port=args.viser_port)
+        print(f"Viser controls: http://127.0.0.1:{args.viser_port}")
+    if not args.no_terminal_controls:
+        print("Terminal controls: p pause, t recovery, c correction, r resume, s save, q stop.")
+        print("Press Enter after each terminal control.")
+        start_terminal_controls(controls)
+    try:
+        output = run_guided_simulation(
+            simulation,
+            controls,
+            output=args.output,
+            max_steps=args.max_steps,
+            panel=panel,
+        )
+    finally:
+        if receiver is not None:
+            receiver.stop()
+    print(json.dumps({"output": str(output), **simulation.episode.summary()}, indent=2))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="rstack")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -115,6 +166,26 @@ def main() -> None:
     train_pi05.add_argument("--config", required=True)
     train_pi05.add_argument("--dry-run", action="store_true")
     train_pi05.set_defaults(func=_train_pi05)
+    simulate = commands.add_parser(
+        "simulate", help="replay dataset frames through a policy and guided controls"
+    )
+    simulate.add_argument("--config", default="configs/policy_worker.yaml")
+    simulate.add_argument("--schema", default="configs/piper_station.yaml")
+    simulate.add_argument("--checkpoint", required=True)
+    simulate.add_argument("--dataset", required=True, help="NPZ containing images_<camera> arrays")
+    simulate.add_argument("--output", default="outputs/guided_simulation.npz")
+    simulate.add_argument("--task", default="")
+    simulate.add_argument("--max-steps", type=int, default=0, help="0 runs until stopped")
+    simulate.add_argument("--viser-port", type=int, default=8010)
+    simulate.add_argument(
+        "--operator-udp-port",
+        type=int,
+        default=None,
+        help="accept local JSON targets from a VR retargeter",
+    )
+    simulate.add_argument("--no-viser", action="store_true")
+    simulate.add_argument("--no-terminal-controls", action="store_true")
+    simulate.set_defaults(func=_simulate)
     inspect = commands.add_parser("inspect", help="print checkpoint manifest")
     inspect.add_argument("checkpoint")
     inspect.set_defaults(func=_inspect)
