@@ -130,10 +130,19 @@ class FixedRateTargetBridge:
         self._failure: BaseException | None = None
         self._stale = False
 
-    def submit(self, values: tuple[float, ...], *, timestamp_s: float, reset: bool = False) -> None:
+    def submit(
+        self,
+        values: tuple[float, ...],
+        *,
+        timestamp_s: float | None = None,
+        reset: bool = False,
+    ) -> None:
+        """Accept one local operator target, timestamping receipt by default."""
         self.raise_if_failed()
         if self._stale:
             raise RuntimeError("target bridge is stale; create a new operator epoch")
+        if timestamp_s is None:
+            timestamp_s = time.perf_counter()
         if reset:
             self.timeline.reset(values, timestamp_s=timestamp_s)
         else:

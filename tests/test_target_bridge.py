@@ -49,3 +49,16 @@ def test_timeline_rejects_out_of_order_targets() -> None:
     timeline.reset((0.0,), timestamp_s=1.0)
     with pytest.raises(ValueError, match="must increase"):
         timeline.push((0.1,), timestamp_s=1.0)
+
+
+def test_bridge_timestamps_an_unstamped_target_on_the_local_clock(monkeypatch) -> None:
+    bridge = FixedRateTargetBridge(
+        lambda _values: None,
+        lambda: None,
+        settings=TargetBridgeSettings(),
+    )
+    monkeypatch.setattr("robotics_stack.guidance.tempo.time.perf_counter", lambda: 42.0)
+
+    bridge.submit((0.1,), reset=True)
+
+    assert bridge.timeline.source_age_s(now_s=42.0) == 0.0
