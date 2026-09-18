@@ -73,7 +73,9 @@ than extrapolated movement.
 ```bash
 rstack teleop --config configs/teleop/piper_vr.example.yaml
 rstack teleop --config configs/teleop/piper_vr.example.yaml \
-  --fake --engage --record --task "place object" --output outputs/vr_place.npz
+  --engage --record --task "place object" \
+  --output-dir outputs/vr_place --repo-id local/vr_place \
+  --episode-duration-s 30 --episodes 20
 ```
 
 The first command is observational. `--engage` is an explicit motion consent;
@@ -82,6 +84,17 @@ Quest uses its configured TCP pose source. PICO is optional and requires its
 local SDK. The source-to-robot transform, axes, gripper direction and scale
 must be commissioned for the physical rig; the example identity transform is
 only appropriate for a compatible simulated frame.
+
+`--record` creates a native LeRobot dataset, not an NPZ archive. Its bounded
+capture worker receives the target actually accepted by the station bridge,
+then records feedback and timestamped camera snapshots. A row fails if its
+capture delay, camera age or inter-camera skew violates `recording` in the VR
+profile. The writer is separate from motion control and its bounded queue
+stops recording instead of silently dropping frames when storage is too slow.
+Each completed episode is finalized and reopened before the next one; use
+`--resume` only with the same schema and cameras. `Ctrl+C` holds the robot and
+discards only the unfinished episode. A finite `--duration-s` saves its final
+episode, while `--episode-duration-s` creates durable episodes continuously.
 
 ## DAgger: authority and recording
 
@@ -111,15 +124,14 @@ The integrated orchestrator must expose two intentional recording policies:
   supervised targets.
 
 `GuidedVrHandoff` implements the authority transition and the station-local
-interpolation bridge. `rstack teleop --record` currently implements the
-manual, corrections-only archive used by the native baseline; the simulation
-runner records both sources to make the provenance boundary observable. The
-missing piece for a complete Pi0.5 DAgger loop is an integrated `rstack dagger`
-orchestrator with an explicit recording policy and a native training-dataset
-writer. It must run the policy, VR handoff and camera-synchronised writer in
-one process group, then export the episode in the training library's native
-format. Until that exists, the authority flow is valid but the manual NPZ
-archive is not a Pi0.5 fine-tuning input.
+interpolation bridge. `rstack teleop --record` now writes manual,
+corrections-only episodes directly in the training library's native format;
+the simulation runner records both sources to make the provenance boundary
+observable. The missing piece for a complete Pi0.5 DAgger loop is an
+integrated `rstack dagger` orchestrator with an explicit recording policy. It
+must run policy, VR handoff and the same camera-synchronised writer in one
+process group. The recorder is ready to be reused there; the policy/control
+orchestrator is the remaining implementation.
 
 ## Further reading
 
