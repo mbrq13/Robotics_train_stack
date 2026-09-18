@@ -40,3 +40,6 @@ the station or sending actions, run:
 ```bash
 python scripts/measure_policy_latency.py --checkpoint <checkpoint>
 ```
+
+The report separates model inference, observation delivery and their combined
+duration, with p95 converted to station control steps.

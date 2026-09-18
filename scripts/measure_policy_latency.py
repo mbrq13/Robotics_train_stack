@@ -132,9 +132,13 @@ async def _measure(
 
         inference_samples: list[float] = []
         observation_age_samples: list[float] = []
+        observation_delivery_samples: list[float] = []
+        end_to_end_samples: list[float] = []
         for index in range(warmup + samples):
+            request_started_at = time.perf_counter()
             await websocket.send(json.dumps({"type": "observation_request"}))
             observation = parse_observation(json.loads(await websocket.recv()))
+            delivery_s = time.perf_counter() - request_started_at
             age_s = max(
                 0.0,
                 (time.monotonic_ns() - observation.station_monotonic_ns) / 1_000_000_000,
@@ -147,6 +151,8 @@ async def _measure(
             if index >= warmup:
                 inference_samples.append(elapsed_s)
                 observation_age_samples.append(age_s)
+                observation_delivery_samples.append(delivery_s)
+                end_to_end_samples.append(delivery_s + elapsed_s)
 
     return {
         "checkpoint": policy.descriptor.source,
@@ -154,6 +160,12 @@ async def _measure(
         "control_hz": schema.control_hz,
         "inference": summarize_latency(inference_samples, schema.control_hz).to_dict(),
         "observation_age": summarize_latency(observation_age_samples, schema.control_hz).to_dict(),
+        "observation_delivery": summarize_latency(
+            observation_delivery_samples, schema.control_hz
+        ).to_dict(),
+        "observation_and_inference": summarize_latency(
+            end_to_end_samples, schema.control_hz
+        ).to_dict(),
     }
 
 
