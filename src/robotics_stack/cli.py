@@ -146,12 +146,24 @@ def _simulate(args: argparse.Namespace) -> None:
 
 
 def _teleop(args: argparse.Namespace) -> None:
-    """Run a manually confirmed VR correction session against a local station."""
-    from robotics_stack.teleoperators.guidance.records import GuidedEpisode, GuidedSample
+    """Run a manually confirmed VR session with optional native episode capture."""
+    from pathlib import Path
+
+    from robotics_stack.datasets.capture import CaptureCoordinator, CaptureRequest, CaptureSettings
+    from robotics_stack.datasets.writer import LeRobotEpisodeRecorder, LeRobotRecordingConfig
     from robotics_stack.teleoperators.guidance.tempo import TargetBridgeSettings
     from robotics_stack.teleoperators.vr.guided import GuidedVrHandoff
     from robotics_stack.teleoperators.vr.session import VrTeleoperator, VrTeleoperatorSettings
     from robotics_stack.teleoperators.vr.tracking import PicoTrackingProvider, QuestTrackingClient
+
+    if args.resume and not args.record:
+        raise ValueError("--resume requires --record")
+    if args.episode_duration_s < 0 or args.duration_s < 0:
+        raise ValueError("recording durations must not be negative")
+    if args.episodes < 0:
+        raise ValueError("--episodes must not be negative")
+    if args.episodes and args.episode_duration_s <= 0:
+        raise ValueError("--episodes requires a positive --episode-duration-s")
 
     config = load_yaml(args.config)
     schema_path = str(config["robot_config"])
@@ -169,7 +181,8 @@ def _teleop(args: argparse.Namespace) -> None:
     else:
         raise ValueError("headset.kind must be quest or pico")
     robot = FakeRobot(schema) if args.fake else create_robot_driver(schema, profile)
-    cameras = None if args.fake else CameraHub(load_camera_configs(load_yaml(schema_path)))
+    camera_configs = [] if args.fake else load_camera_configs(load_yaml(schema_path))
+    cameras = None if args.fake else CameraHub(camera_configs)
     station = RobotStation(
         robot,
         schema,
@@ -180,10 +193,61 @@ def _teleop(args: argparse.Namespace) -> None:
     )
     settings = VrTeleoperatorSettings(**motion)
     teleoperator = VrTeleoperator(schema, settings=settings)
-    handoff = GuidedVrHandoff(station, teleoperator, bridge_settings=TargetBridgeSettings(**bridge))
+    recorder: LeRobotEpisodeRecorder | None = None
+    if args.record:
+        recording = dict(config.get("recording", {}))
+        capture_settings = CaptureSettings(
+            fps=float(recording.get("fps", 30.0)),
+            max_capture_delay_ms=float(recording.get("max_capture_delay_ms", 80.0)),
+            max_camera_age_ms=float(recording.get("max_camera_age_ms", 250.0)),
+            max_camera_skew_ms=float(recording.get("max_camera_skew_ms", 60.0)),
+        )
+        camera_shapes = {
+            camera.name: (camera.height, camera.width) for camera in camera_configs
+        }
+        coordinator = CaptureCoordinator(
+            settings=capture_settings,
+            action_size=schema.action_size,
+            camera_names=tuple(camera_shapes),
+            read_state=station.robot.observation,
+            read_cameras=station.camera_snapshots,
+        )
+        recorder = LeRobotEpisodeRecorder(
+            schema=schema,
+            coordinator=coordinator,
+            config=LeRobotRecordingConfig(
+                root=Path(args.output_dir),
+                repo_id=args.repo_id,
+                task=args.task,
+                camera_shapes=camera_shapes,
+                fps=capture_settings.fps,
+                resume=args.resume,
+                video_codec=str(recording.get("video_codec", "h264")),
+            ),
+        )
+
+    def record_emitted_target(values: tuple[float, ...], emitted_ns: int) -> None:
+        if recorder is None:
+            return
+        snapshot = station.supervisor.authority.snapshot
+        recorder.submit(
+            CaptureRequest(
+                action=values,
+                emitted_monotonic_ns=emitted_ns,
+                source=1,
+                control_generation=snapshot.generation,
+            )
+        )
+
+    handoff = GuidedVrHandoff(
+        station,
+        teleoperator,
+        bridge_settings=TargetBridgeSettings(**bridge),
+        on_target_emitted=record_emitted_target if recorder is not None else None,
+    )
     started = False
-    episode = GuidedEpisode(task=args.task, schema_version=schema.version) if args.record else None
-    observation_id = 0
+    interrupted = False
+    saved_episodes = 0
     try:
         station.connect()
         station.arm()
@@ -201,42 +265,59 @@ def _teleop(args: argparse.Namespace) -> None:
             return
         handoff.begin_correction(frame)
         started = True
-        print("VR control is active. Press Ctrl+C to hold and finish this correction session.")
+        if recorder is None:
+            print("VR control is active. Press Ctrl+C to hold and finish this session.")
+        else:
+            print(
+                "VR recording is active. Ctrl+C discards the unfinished episode; "
+                "--duration-s saves it when the session ends."
+            )
         until = time.monotonic() + args.duration_s if args.duration_s > 0 else None
+        episode_deadline = (
+            time.monotonic() + args.episode_duration_s if args.episode_duration_s > 0 else None
+        )
         last_timestamp = -1
         while until is None or time.monotonic() < until:
             frame = provider.poll()
             if frame is not None and frame.timestamp_ns > last_timestamp:
-                accepted = handoff.submit_tracking(frame)
-                if accepted and episode is not None:
-                    observation_id += 1
-                    target = teleoperator.target
-                    assert target is not None
-                    images = {name: station.camera_frame(name) for name in schema.camera_names}
-                    episode.append(
-                        GuidedSample(
-                            observation_id=observation_id,
-                            station_monotonic_ns=time.monotonic_ns(),
-                            state=station.robot.observation(),
-                            action=target,
-                            phase=station.supervisor.authority.snapshot.phase,
-                            control_generation=station.supervisor.control_generation,
-                            images=images,
-                        )
-                    )
+                handoff.submit_tracking(frame)
                 last_timestamp = frame.timestamp_ns
+            episode_due = episode_deadline is not None and time.monotonic() >= episode_deadline
+            if recorder is not None and episode_due:
+                frames = recorder.save_episode()
+                saved_episodes += 1
+                print(json.dumps({"saved_episode": saved_episodes, "frames": frames}))
+                if args.episodes and saved_episodes >= args.episodes:
+                    break
+                episode_deadline = time.monotonic() + args.episode_duration_s
             time.sleep(1.0 / settings.tracking_rate_hz)
+    except KeyboardInterrupt:
+        interrupted = True
+        print("Cancelling the unfinished episode and holding the robot.")
     finally:
         try:
             if started:
                 handoff.finish_correction()
         finally:
+            if recorder is not None:
+                saved = recorder.close(save_active=not interrupted)
+                if saved:
+                    saved_episodes += 1
+                print(
+                    json.dumps(
+                        {
+                            "dataset": args.output_dir,
+                            "saved_episodes": saved_episodes,
+                            "total_episodes": int(recorder.dataset.num_episodes),
+                            "total_frames": int(recorder.dataset.num_frames),
+                            "cancelled_active_episode": interrupted,
+                        },
+                        indent=2,
+                    )
+                )
             if isinstance(provider, QuestTrackingClient):
                 provider.stop()
             station.disconnect()
-    if episode is not None and episode.samples:
-        output = episode.export_npz(args.output)
-        print(json.dumps({"output": str(output), **episode.summary()}, indent=2))
 
 
 def main() -> None:
@@ -293,8 +374,21 @@ def main() -> None:
     )
     teleop.add_argument("--connect-timeout-s", type=float, default=15.0)
     teleop.add_argument("--duration-s", type=float, default=0.0, help="0 runs until interrupted")
-    teleop.add_argument("--record", action="store_true", help="write the manual correction episode")
-    teleop.add_argument("--output", default="outputs/vr_episode.npz")
+    teleop.add_argument("--record", action="store_true", help="record native LeRobot episodes")
+    teleop.add_argument("--output-dir", default="outputs/vr_episodes")
+    teleop.add_argument("--repo-id", default="local/robotics-stack-vr")
+    teleop.add_argument(
+        "--resume", action="store_true", help="append to an existing compatible dataset"
+    )
+    teleop.add_argument(
+        "--episode-duration-s",
+        type=float,
+        default=0.0,
+        help="save and begin a new episode at this interval; 0 keeps one episode",
+    )
+    teleop.add_argument(
+        "--episodes", type=int, default=0, help="stop after this many saved episodes"
+    )
     teleop.add_argument("--task", default="")
     teleop.set_defaults(func=_teleop)
     inspect = commands.add_parser("inspect", help="print checkpoint manifest")

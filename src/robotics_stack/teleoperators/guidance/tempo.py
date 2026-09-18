@@ -120,11 +120,13 @@ class FixedRateTargetBridge:
         hold: Callable[[], None],
         *,
         settings: TargetBridgeSettings,
+        on_emit: Callable[[tuple[float, ...], int], None] | None = None,
     ):
         self.settings = settings
         self.timeline = TargetTimeline(settings)
         self._write = write
         self._hold = hold
+        self._on_emit = on_emit
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._failure: BaseException | None = None
@@ -190,6 +192,8 @@ class FixedRateTargetBridge:
         if sample is not None:
             values, _mode = sample
             self._write(values)
+            if self._on_emit is not None:
+                self._on_emit(values, time.monotonic_ns())
         return True
 
     def raise_if_failed(self) -> None:

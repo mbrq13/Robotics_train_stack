@@ -20,3 +20,13 @@ bridge:
   input_rate_hz: 72
   output_rate_hz: 100
   source_timeout_s: 0.15
+recording:
+  # Native LeRobot rows are sampled from station-accepted targets, not from
+  # headset packets. These bounds reject a row that cannot be time-audited.
+  fps: 30
+  max_capture_delay_ms: 80
+  max_camera_age_ms: 250
+  max_camera_skew_ms: 60
+  # Explicitly selected for broad station compatibility; change only after an
+  # encoder-throughput test on the deployment machine.
+  video_codec: h264

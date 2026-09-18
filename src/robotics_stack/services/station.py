@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,7 +13,7 @@ from robotics_stack.contracts import Observation, RobotSchema
 from robotics_stack.control.streamer import MotionStreamer
 from robotics_stack.control.supervisor import MotionSupervisor, RunState
 from robotics_stack.robots.base import RobotDriver
-from robotics_stack.robots.cameras import CameraHub
+from robotics_stack.robots.cameras import CameraFrame, CameraHub
 from robotics_stack.teleoperators.guidance.authority import ControlSource
 from robotics_stack.teleoperators.guidance.tempo import FixedRateTargetBridge, TargetBridgeSettings
 from robotics_stack.transport.messages import observation_message, parse_action
@@ -143,6 +144,8 @@ class RobotStation:
     def create_operator_target_bridge(
         self,
         settings: TargetBridgeSettings | None = None,
+        *,
+        on_emit: Callable[[tuple[float, ...], int], None] | None = None,
     ) -> FixedRateTargetBridge:
         """Build a local, timestamp-aware target bridge for one operator epoch."""
         snapshot = self.supervisor.authority.snapshot
@@ -156,6 +159,7 @@ class RobotStation:
             write,
             self._hold_robot,
             settings=TargetBridgeSettings() if settings is None else settings,
+            on_emit=on_emit,
         )
 
     def finish_operator_control(self) -> int:
@@ -209,6 +213,17 @@ class RobotStation:
         if self.cameras is None:
             raise KeyError("this station has no configured cameras")
         return self.cameras.frame(name)
+
+    def camera_snapshots(self) -> dict[str, CameraFrame]:
+        """Return timestamped camera frames for a local recorder.
+
+        Recording stays on the station because its timestamps share the robot
+        clock. Network policy messages are deliberately not used as a capture
+        source.
+        """
+        if self.cameras is None:
+            return {}
+        return self.cameras.snapshots()
 
     async def serve(self, host: str, port: int) -> None:
         try:

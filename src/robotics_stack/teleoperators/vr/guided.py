@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from robotics_stack.services.station import RobotStation
 from robotics_stack.teleoperators.guidance.tempo import FixedRateTargetBridge, TargetBridgeSettings
 from robotics_stack.teleoperators.vr.session import VrTeleoperator
@@ -17,12 +19,14 @@ class GuidedVrHandoff:
         teleoperator: VrTeleoperator,
         *,
         bridge_settings: TargetBridgeSettings | None = None,
+        on_target_emitted: Callable[[tuple[float, ...], int], None] | None = None,
     ) -> None:
         if station.schema != teleoperator.schema:
             raise ValueError("VR teleoperator schema does not match the station")
         self.station = station
         self.teleoperator = teleoperator
         self.bridge_settings = bridge_settings or TargetBridgeSettings()
+        self.on_target_emitted = on_target_emitted
         self._bridge: FixedRateTargetBridge | None = None
         self._submitted = False
 
@@ -33,7 +37,9 @@ class GuidedVrHandoff:
         generation = self.station.begin_operator_correction()
         self.teleoperator.set_state(self.station.robot.observation())
         self.teleoperator.engage(frame, sides=sides)
-        self._bridge = self.station.create_operator_target_bridge(self.bridge_settings)
+        self._bridge = self.station.create_operator_target_bridge(
+            self.bridge_settings, on_emit=self.on_target_emitted
+        )
         self._bridge.start()
         self._submitted = False
         return generation

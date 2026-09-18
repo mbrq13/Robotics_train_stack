@@ -40,6 +40,15 @@ class CameraHealth:
     shape: tuple[int, int] | None
 
 
+@dataclass(frozen=True)
+class CameraFrame:
+    """One encoded camera frame together with its station-clock capture time."""
+
+    data: bytes
+    monotonic_ns: int
+    shape: tuple[int, int]
+
+
 class CameraHub:
     """Captures only the newest frame; slow consumers never create a backlog."""
 
@@ -93,11 +102,27 @@ class CameraHub:
 
     def frame(self, name: str) -> bytes:
         """Return the latest already-encoded preview without touching capture."""
+        return self.snapshot(name).data
+
+    def snapshot(self, name: str) -> CameraFrame:
+        """Return the latest frame and its timestamp as one atomic snapshot."""
         with self._lock:
             try:
-                return self._frames[name]
+                return CameraFrame(
+                    data=self._frames[name],
+                    monotonic_ns=self._timestamps[name],
+                    shape=self._shapes[name],
+                )
             except KeyError as exc:
                 raise KeyError(f"camera {name!r} has no frame") from exc
+
+    def snapshots(self) -> dict[str, CameraFrame]:
+        """Return a consistent copy of the newest frame from every camera."""
+        with self._lock:
+            return {
+                name: CameraFrame(self._frames[name], self._timestamps[name], self._shapes[name])
+                for name in self._frames
+            }
 
     def health(self) -> dict[str, CameraHealth]:
         now = time.monotonic_ns()

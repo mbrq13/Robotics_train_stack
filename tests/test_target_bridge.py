@@ -63,3 +63,21 @@ def test_bridge_timestamps_an_unstamped_target_on_the_local_clock(monkeypatch) -
     bridge.submit((0.1,), reset=True)
 
     assert bridge.timeline.source_age_s(now_s=42.0) == 0.0
+
+
+def test_bridge_reports_the_interpolated_target_that_was_emitted(monkeypatch) -> None:
+    delivered: list[tuple[float, ...]] = []
+    emitted: list[tuple[tuple[float, ...], int]] = []
+    bridge = FixedRateTargetBridge(
+        delivered.append,
+        lambda: None,
+        settings=TargetBridgeSettings(playback_delay_s=0.0),
+        on_emit=lambda values, timestamp_ns: emitted.append((values, timestamp_ns)),
+    )
+    monkeypatch.setattr("robotics_stack.teleoperators.guidance.tempo.time.monotonic_ns", lambda: 99)
+
+    bridge.submit((0.1,), timestamp_s=1.0, reset=True)
+    assert bridge.tick(now_s=1.0)
+
+    assert delivered == [(0.1,)]
+    assert emitted == [((0.1,), 99)]
