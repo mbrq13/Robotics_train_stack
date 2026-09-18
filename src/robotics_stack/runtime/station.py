@@ -108,11 +108,46 @@ class RobotStation:
         self.supervisor.start()
 
     def pause(self, reason: str = "operator pause") -> None:
-        if self._streamer is not None:
-            self._streamer.hold()
-        else:
-            self.robot.hold()
+        self._hold_robot()
         self.supervisor.pause(reason)
+
+    def begin_operator_recovery(self) -> int:
+        """Hold motion, then grant the local operator recovery control."""
+        if self.supervisor.state == RunState.RUNNING:
+            self.pause("operator recovery")
+        return self.supervisor.begin_operator_recovery()
+
+    def begin_operator_correction(self) -> int:
+        """Hold motion, then grant the local operator correction control."""
+        if self.supervisor.state == RunState.RUNNING:
+            self.pause("operator correction")
+        return self.supervisor.begin_operator_correction()
+
+    def apply_operator_target(
+        self,
+        values: tuple[float, ...],
+        *,
+        control_generation: int,
+    ) -> None:
+        """Apply a locally produced operator target in the active guidance phase."""
+        verdict = self.supervisor.validate_operator_target(values, control_generation)
+        if not verdict.accepted:
+            raise RuntimeError(verdict.reason)
+        if self._streamer is None:
+            self.robot.set_target(values)
+        else:
+            self._streamer.set_target(values)
+
+    def finish_operator_control(self) -> int:
+        """Stop at the measured pose before releasing operator authority."""
+        self._hold_robot()
+        return self.supervisor.finish_operator_control()
+
+    def resume_policy(self) -> str:
+        """Create a fresh policy session after a completed operator handoff."""
+        session_id = self.arm()
+        self.start()
+        return session_id
 
     def home(self) -> None:
         self.pause("home requested")
@@ -124,10 +159,7 @@ class RobotStation:
             self._streamer.set_target(self.home_action)
 
     def clear_fault(self) -> None:
-        if self._streamer is not None:
-            self._streamer.hold()
-        else:
-            self.robot.hold()
+        self._hold_robot()
         self.supervisor.reset_fault()
 
     def status(self) -> StationStatus:
@@ -280,3 +312,9 @@ class RobotStation:
             return
         async with self._send_lock:
             await self._connection.send(json.dumps(message))
+
+    def _hold_robot(self) -> None:
+        if self._streamer is not None:
+            self._streamer.hold()
+        else:
+            self.robot.hold()

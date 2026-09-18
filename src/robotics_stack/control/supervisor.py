@@ -62,6 +62,12 @@ class MotionSupervisor:
     def arm(self) -> str:
         if self.state not in {RunState.READY, RunState.PAUSED}:
             raise RuntimeError(f"cannot arm while {self.state.value}")
+        operator_still_active = (
+            self.state == RunState.PAUSED
+            and self.authority.snapshot.source is not ControlSource.HOLD
+        )
+        if operator_still_active:
+            raise RuntimeError("operator control must finish before policy execution can be armed")
         self.session_id = uuid.uuid4().hex
         self.last_sequence_id = -1
         self.last_action_at_ns = None
@@ -96,6 +102,21 @@ class MotionSupervisor:
         self.last_fault = None
         self.last_sequence_id = -1
 
+    def begin_operator_recovery(self) -> int:
+        if self.state != RunState.PAUSED:
+            raise RuntimeError("operator recovery requires a paused station")
+        return self.authority.begin_recovery().generation
+
+    def begin_operator_correction(self) -> int:
+        if self.state != RunState.PAUSED:
+            raise RuntimeError("operator correction requires a paused station")
+        return self.authority.begin_correction().generation
+
+    def finish_operator_control(self) -> int:
+        if self.state != RunState.PAUSED:
+            raise RuntimeError("operator control requires a paused station")
+        return self.authority.finish_operator_control().generation
+
     @property
     def control_generation(self) -> int:
         return self.authority.snapshot.generation
@@ -123,6 +144,21 @@ class MotionSupervisor:
             return GuardResult(False, str(exc))
         self.last_sequence_id = action.sequence_id
         self.last_action_at_ns = now
+        return GuardResult(True, "accepted")
+
+    def validate_operator_target(
+        self,
+        values: tuple[float, ...],
+        control_generation: int,
+    ) -> GuardResult:
+        if self.state != RunState.PAUSED:
+            return GuardResult(False, f"station is {self.state.value}")
+        if not self.authority.accepts(ControlSource.OPERATOR, control_generation):
+            return GuardResult(False, "operator target belongs to an inactive control generation")
+        try:
+            self.schema.validate_action(values)
+        except ContractError as exc:
+            return GuardResult(False, str(exc))
         return GuardResult(True, "accepted")
 
     def watchdog_expired(

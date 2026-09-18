@@ -21,3 +21,8 @@ An input-device adapter is intentionally separate from this contract. It must
 perform the physical hold and use the same station schema before it can append
 operator samples. This keeps new teleoperation hardware from changing the
 policy deployment path.
+
+An adapter drives the station through `begin_operator_recovery` or
+`begin_operator_correction`, `apply_operator_target`, `finish_operator_control`
+and `resume_policy`. Operator targets are accepted only while that authority
+generation is active; resuming creates a fresh policy session.
