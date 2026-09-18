@@ -15,6 +15,15 @@ if [[ ! -d .venv ]]; then
   "$PYTHON_BIN" -m venv .venv
 fi
 
+if ! .venv/bin/python -c "import sys" >/dev/null 2>&1; then
+  echo "Rebuilding an unusable .venv with $PYTHON_BIN"
+  "$PYTHON_BIN" -m venv --clear .venv
+fi
+
+if ! .venv/bin/python -m pip --version >/dev/null 2>&1; then
+  .venv/bin/python -m ensurepip --upgrade
+fi
+
 .venv/bin/python -m pip install --upgrade pip
 if [[ "$1" == "all" ]]; then
   .venv/bin/python -m pip install -e ".[station,policy-lerobot,ui,dev]"
