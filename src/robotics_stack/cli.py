@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import time
 
 from robotics_stack.config.loaders import load_camera_configs, load_station_config, load_yaml
 from robotics_stack.evaluation.replay import evaluate_state_mlp
@@ -144,6 +145,100 @@ def _simulate(args: argparse.Namespace) -> None:
     print(json.dumps({"output": str(output), **simulation.episode.summary()}, indent=2))
 
 
+def _teleop(args: argparse.Namespace) -> None:
+    """Run a manually confirmed VR correction session against a local station."""
+    from robotics_stack.teleoperators.guidance.records import GuidedEpisode, GuidedSample
+    from robotics_stack.teleoperators.guidance.tempo import TargetBridgeSettings
+    from robotics_stack.teleoperators.vr.guided import GuidedVrHandoff
+    from robotics_stack.teleoperators.vr.session import VrTeleoperator, VrTeleoperatorSettings
+    from robotics_stack.teleoperators.vr.tracking import PicoTrackingProvider, QuestTrackingClient
+
+    config = load_yaml(args.config)
+    schema_path = str(config["robot_config"])
+    schema, station_cfg, profile = load_station_config(schema_path)
+    headset = dict(config.get("headset", {}))
+    motion = dict(config.get("motion", {}))
+    bridge = dict(config.get("bridge", {}))
+    if str(headset.get("kind", "")) == "quest":
+        provider = QuestTrackingClient(str(headset["host"]), port=int(headset.get("port", 65432)))
+        provider.start()
+    elif str(headset.get("kind", "")) == "pico":
+        if args.pico_usb:
+            PicoTrackingProvider.prepare_usb()
+        provider = PicoTrackingProvider()
+    else:
+        raise ValueError("headset.kind must be quest or pico")
+    robot = FakeRobot(schema) if args.fake else create_robot_driver(schema, profile)
+    cameras = None if args.fake else CameraHub(load_camera_configs(load_yaml(schema_path)))
+    station = RobotStation(
+        robot,
+        schema,
+        action_age_ms=float(station_cfg.get("action_age_ms", 250)),
+        motion_mode=str(station_cfg.get("motion_mode", "direct")),
+        stream_rate_hz=float(station_cfg.get("stream_rate_hz", 100)),
+        cameras=cameras,
+    )
+    settings = VrTeleoperatorSettings(**motion)
+    teleoperator = VrTeleoperator(schema, settings=settings)
+    handoff = GuidedVrHandoff(station, teleoperator, bridge_settings=TargetBridgeSettings(**bridge))
+    started = False
+    episode = GuidedEpisode(task=args.task, schema_version=schema.version) if args.record else None
+    observation_id = 0
+    try:
+        station.connect()
+        station.arm()
+        station.start()
+        station.pause("VR teleoperation preparation")
+        deadline = time.monotonic() + args.connect_timeout_s
+        frame = provider.poll()
+        while frame is None and time.monotonic() < deadline:
+            time.sleep(0.01)
+            frame = provider.poll()
+        if frame is None:
+            raise TimeoutError("no valid VR controller frame arrived before the timeout")
+        if not args.engage:
+            print("VR tracking is connected. Re-run with --engage after clearing the workcell.")
+            return
+        handoff.begin_correction(frame)
+        started = True
+        print("VR control is active. Press Ctrl+C to hold and finish this correction session.")
+        until = time.monotonic() + args.duration_s if args.duration_s > 0 else None
+        last_timestamp = -1
+        while until is None or time.monotonic() < until:
+            frame = provider.poll()
+            if frame is not None and frame.timestamp_ns > last_timestamp:
+                accepted = handoff.submit_tracking(frame)
+                if accepted and episode is not None:
+                    observation_id += 1
+                    target = teleoperator.target
+                    assert target is not None
+                    images = {name: station.camera_frame(name) for name in schema.camera_names}
+                    episode.append(
+                        GuidedSample(
+                            observation_id=observation_id,
+                            station_monotonic_ns=time.monotonic_ns(),
+                            state=station.robot.observation(),
+                            action=target,
+                            phase=station.supervisor.authority.snapshot.phase,
+                            control_generation=station.supervisor.control_generation,
+                            images=images,
+                        )
+                    )
+                last_timestamp = frame.timestamp_ns
+            time.sleep(1.0 / settings.tracking_rate_hz)
+    finally:
+        try:
+            if started:
+                handoff.finish_correction()
+        finally:
+            if isinstance(provider, QuestTrackingClient):
+                provider.stop()
+            station.disconnect()
+    if episode is not None and episode.samples:
+        output = episode.export_npz(args.output)
+        print(json.dumps({"output": str(output), **episode.summary()}, indent=2))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="rstack")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -187,6 +282,21 @@ def main() -> None:
     simulate.add_argument("--no-viser", action="store_true")
     simulate.add_argument("--no-terminal-controls", action="store_true")
     simulate.set_defaults(func=_simulate)
+    teleop = commands.add_parser("teleop", help="teleoperate a local robot from a VR headset")
+    teleop.add_argument("--config", default="configs/teleop/piper_vr.example.yaml")
+    teleop.add_argument(
+        "--fake", action="store_true", help="use the deterministic simulation backend"
+    )
+    teleop.add_argument("--engage", action="store_true", help="explicitly enable robot motion")
+    teleop.add_argument(
+        "--pico-usb", action="store_true", help="configure the PICO ADB tracking tunnel"
+    )
+    teleop.add_argument("--connect-timeout-s", type=float, default=15.0)
+    teleop.add_argument("--duration-s", type=float, default=0.0, help="0 runs until interrupted")
+    teleop.add_argument("--record", action="store_true", help="write the manual correction episode")
+    teleop.add_argument("--output", default="outputs/vr_episode.npz")
+    teleop.add_argument("--task", default="")
+    teleop.set_defaults(func=_teleop)
     inspect = commands.add_parser("inspect", help="print checkpoint manifest")
     inspect.add_argument("checkpoint")
     inspect.set_defaults(func=_inspect)

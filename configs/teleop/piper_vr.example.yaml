@@ -1,0 +1,22 @@
+# This profile contains operator-motion parameters, never policy parameters.
+robot_config: configs/robots/piper_bimanual.yaml
+headset:
+  # `quest` reads newline-delimited JSON from a companion app. `pico` loads
+  # the optional XRoboToolkit SDK on the station machine.
+  kind: quest
+  host: 192.168.1.50
+  port: 65432
+motion:
+  tracking_rate_hz: 72
+  joint_speed_cap_rad_s: 1.0
+  translation_scale: 1.0
+  max_displacement_m: 0.60
+  gripper_rate_per_s: 0.75
+  tracking_timeout_s: 0.15
+  # This is rig calibration, not a generic device default. Confirm it in
+  # simulation and replace it with the measured source-to-robot frame map.
+  source_to_robot_rotation: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+bridge:
+  input_rate_hz: 72
+  output_rate_hz: 100
+  source_timeout_s: 0.15

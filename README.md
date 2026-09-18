@@ -49,3 +49,5 @@ the corresponding workflows. See [guided collection](docs/guided_collection.md)
 for correction-data provenance and [technical validation](docs/validation_basis.md)
 for the runtime assumptions and commissioning evidence. See [inference modes](docs/inference.md)
 and [robot profiles](docs/robot_profiles.md) for deployment boundaries.
+See [VR teleoperation](docs/teleoperation.md) for headset integration, DLS and
+DAgger control handoff.
