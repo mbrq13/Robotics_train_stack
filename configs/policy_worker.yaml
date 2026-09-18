@@ -10,6 +10,10 @@ robot_type: piper
 # `sync` is the universal one-call-per-tick mode. Use `rtc` only with a
 # checkpoint trained for RTC. The former name `standard` remains accepted.
 execution_mode: sync
+# EMA alpha for synchronous action output. 1.0 preserves each checkpoint
+# action exactly; values below 1.0 require a measured, task-specific decision.
+# It is intentionally unavailable in RTC mode.
+action_smoothing_alpha: 1.0
 rtc_execution_horizon: 10
 rtc_refill_threshold: 10
 # Explicit state ordering for checkpoints that omit semantic names.

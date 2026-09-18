@@ -119,3 +119,21 @@ def test_preflight_rejects_robot_type_disagreement(tmp_path) -> None:
             worker,
             _checkpoint(tmp_path / "valid", [3, 376, 672]),
         )
+
+
+def test_preflight_rejects_smoothing_for_rtc(tmp_path) -> None:
+    root = Path(__file__).parents[1]
+    worker = tmp_path / "worker.yaml"
+    worker.write_text(
+        (root / "configs" / "policy_worker.yaml")
+        .read_text(encoding="utf-8")
+        .replace("execution_mode: sync", "execution_mode: rtc")
+        .replace("action_smoothing_alpha: 1.0", "action_smoothing_alpha: 0.5"),
+        encoding="utf-8",
+    )
+    with pytest.raises(ContractError, match="not supported with RTC"):
+        check_deployment(
+            root / "configs" / "piper_station.yaml",
+            worker,
+            _checkpoint(tmp_path / "valid", [3, 376, 672]),
+        )

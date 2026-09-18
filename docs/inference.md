@@ -12,6 +12,20 @@ every supported policy and has the smallest state surface. Use it when the
 measured end-to-end inference time fits the control period, or when first
 validating a checkpoint and a robot profile.
 
+### Optional synchronous action smoothing
+
+`action_smoothing_alpha` is an exponential moving-average coefficient applied
+after a synchronous policy has produced an action and before it is sent to the
+station. `1.0` is the default and identity: it preserves the checkpoint action
+exactly. Values in `(0, 1)` attenuate rapid changes, but also change the action
+distribution and introduce history dependence. The smoother resets whenever a
+new session or control generation starts.
+
+Use it only after an A/B comparison on the same checkpoint, workcell and task.
+Record success rate, completion time, action-delta statistics and end-to-end
+latency. It is not available in RTC: its queued action prefix must remain the
+same representation that the checkpoint used while predicting the chunk.
+
 ## Trained RTC
 
 `execution_mode: rtc` separates a chunk producer from a fixed-rate action
@@ -48,3 +62,12 @@ worker contract, then add recording and operator-control behavior around it.
 The classification follows LeRobot's deployment model: sync and RTC are
 inference backends, while base, DAgger, sentry, highlight, and episodic are
 rollout strategies. See the [official inference guide](https://github.com/huggingface/lerobot/blob/main/docs/source/inference.mdx).
+
+## Filtering decision
+
+An adaptive low-pass filter can be appropriate for a noisy operator-tracking
+signal, where the observed input is the quantity to clean. It is not enabled
+on learned policy actions by default. A filter can suppress meaningful contact
+corrections just as easily as it suppresses noise, and any low-pass filter
+trades jitter for delay. Evaluate it as a separate experiment before adopting
+it for a rollout path.

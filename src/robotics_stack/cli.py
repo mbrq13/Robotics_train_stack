@@ -222,6 +222,7 @@ def _policy(args: argparse.Namespace) -> None:
             rtc_refill_threshold=int(config["rtc_refill_threshold"])
             if "rtc_refill_threshold" in config
             else None,
+            action_smoothing_alpha=float(config.get("action_smoothing_alpha", 1.0)),
         )
     )
 

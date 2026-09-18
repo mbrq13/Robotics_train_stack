@@ -13,6 +13,7 @@ from robotics_stack.contracts import Observation, PolicyAction, RobotSchema
 from robotics_stack.link.messages import action_message, parse_observation
 from robotics_stack.policy.checkpoints import DeployedPolicy, load_deployed_policy
 from robotics_stack.policy.rtc import LatencyTracker, RtcActionQueue, RtcSettings
+from robotics_stack.runtime.action_smoothing import ExponentialActionSmoother
 
 
 def _trained_chunk_is_usable(
@@ -24,8 +25,16 @@ def _trained_chunk_is_usable(
     return measured_delay <= training_max_delay and measured_delay <= conditioned_delay
 
 
-async def _run_standard_agent(websocket: Any, policy: DeployedPolicy, schema: RobotSchema) -> None:
+async def _run_standard_agent(
+    websocket: Any,
+    policy: DeployedPolicy,
+    schema: RobotSchema,
+    *,
+    action_smoothing_alpha: float,
+) -> None:
     sequence_id = 0
+    smoother = ExponentialActionSmoother(action_smoothing_alpha)
+    control_epoch: tuple[str, int] | None = None
     async for raw_message in websocket:
         message = json.loads(raw_message)
         if message.get("type") != "observation":
@@ -34,8 +43,13 @@ async def _run_standard_agent(websocket: Any, policy: DeployedPolicy, schema: Ro
         session_id = message.get("session_id")
         if not session_id:
             continue
+        epoch = (str(session_id), observation.control_generation)
+        if epoch != control_epoch:
+            smoother.reset()
+            control_epoch = epoch
         sequence_id += 1
         action = await asyncio.to_thread(policy.predict, observation)
+        action = smoother.apply(action)
         await websocket.send(
             json.dumps(
                 action_message(
@@ -234,6 +248,7 @@ async def run_policy_agent(
     execution_mode: str = "sync",
     rtc_execution_horizon: int | None = None,
     rtc_refill_threshold: int | None = None,
+    action_smoothing_alpha: float = 1.0,
 ) -> None:
     try:
         from websockets.asyncio.client import connect
@@ -243,6 +258,11 @@ async def run_policy_agent(
         execution_mode = "sync"  # Compatibility with early stack configurations.
     if execution_mode not in {"sync", "rtc"}:
         raise ValueError("execution_mode must be 'sync' or 'rtc'")
+    if execution_mode == "rtc" and action_smoothing_alpha != 1.0:
+        raise ValueError(
+            "action smoothing is not supported with RTC: it would alter queued "
+            "actions after the checkpoint's trained prefix was constructed"
+        )
     policy = load_deployed_policy(
         checkpoint, task=task, device=device, state_names=state_names, robot_type=robot_type
     )
@@ -264,7 +284,12 @@ async def run_policy_agent(
             )
         policy.descriptor.validate_station(schema)
         if execution_mode == "sync":
-            await _run_standard_agent(websocket, policy, schema)
+            await _run_standard_agent(
+                websocket,
+                policy,
+                schema,
+                action_smoothing_alpha=action_smoothing_alpha,
+            )
             return
         training_delay = policy.descriptor.rtc_training_max_delay
         horizon = rtc_execution_horizon or training_delay

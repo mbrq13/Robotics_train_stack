@@ -68,6 +68,14 @@ def check_deployment(
         execution_mode = "sync"
     if execution_mode not in {"sync", "rtc"}:
         raise ValueError("execution_mode must be sync or rtc")
+    action_smoothing_alpha = float(worker.get("action_smoothing_alpha", 1.0))
+    if not 0.0 < action_smoothing_alpha <= 1.0:
+        raise ContractError("action_smoothing_alpha must be in (0, 1]")
+    if execution_mode == "rtc" and action_smoothing_alpha != 1.0:
+        raise ContractError(
+            "action smoothing is not supported with RTC because it changes queued actions "
+            "after the trained prefix is constructed"
+        )
     if execution_mode == "rtc":
         delay = descriptor.rtc_training_max_delay
         if delay <= 0:
