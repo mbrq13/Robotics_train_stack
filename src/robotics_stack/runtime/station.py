@@ -11,6 +11,8 @@ from typing import Any
 from robotics_stack.contracts import Observation, RobotSchema
 from robotics_stack.control.streamer import MotionStreamer
 from robotics_stack.control.supervisor import MotionSupervisor, RunState
+from robotics_stack.guidance.authority import ControlSource
+from robotics_stack.guidance.tempo import FixedRateTargetBridge, TargetBridgeSettings
 from robotics_stack.hardware.base import RobotDriver
 from robotics_stack.hardware.cameras import CameraHub
 from robotics_stack.link.messages import observation_message, parse_action
@@ -137,6 +139,24 @@ class RobotStation:
             self.robot.set_target(values)
         else:
             self._streamer.set_target(values)
+
+    def create_operator_target_bridge(
+        self,
+        settings: TargetBridgeSettings | None = None,
+    ) -> FixedRateTargetBridge:
+        """Build a local, timestamp-aware target bridge for one operator epoch."""
+        snapshot = self.supervisor.authority.snapshot
+        if snapshot.source is not ControlSource.OPERATOR:
+            raise RuntimeError("operator authority is required before creating a target bridge")
+
+        def write(values: tuple[float, ...]) -> None:
+            self.apply_operator_target(values, control_generation=snapshot.generation)
+
+        return FixedRateTargetBridge(
+            write,
+            self._hold_robot,
+            settings=TargetBridgeSettings() if settings is None else settings,
+        )
 
     def finish_operator_control(self) -> int:
         """Stop at the measured pose before releasing operator authority."""

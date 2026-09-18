@@ -6,6 +6,7 @@ from robotics_stack.guidance.authority import (
     GuidancePhase,
 )
 from robotics_stack.guidance.records import GuidedEpisode, GuidedSample
+from robotics_stack.guidance.tempo import FixedRateTargetBridge, TargetBridgeSettings
 
 __all__ = [
     "ControlAuthority",
@@ -13,4 +14,6 @@ __all__ = [
     "GuidancePhase",
     "GuidedEpisode",
     "GuidedSample",
+    "FixedRateTargetBridge",
+    "TargetBridgeSettings",
 ]
