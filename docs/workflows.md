@@ -106,7 +106,9 @@ The integrated orchestrator must expose two intentional recording policies:
   initial DAgger data. It produces a compact, clearly labelled correction set.
 - **Continuous** records autonomous and operator samples with an operator mask.
   Use it only when the desired retraining mix has been decided, because policy
-  samples can dominate the dataset.
+  samples can dominate the dataset. Autonomous actions are rollout telemetry,
+  not expert labels by themselves; select or relabel them before using them as
+  supervised targets.
 
 `GuidedVrHandoff` implements the authority transition and the station-local
 interpolation bridge. `rstack teleop --record` currently implements the
