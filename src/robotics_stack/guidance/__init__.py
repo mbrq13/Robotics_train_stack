@@ -5,5 +5,12 @@ from robotics_stack.guidance.authority import (
     ControlSource,
     GuidancePhase,
 )
+from robotics_stack.guidance.records import GuidedEpisode, GuidedSample
 
-__all__ = ["ControlAuthority", "ControlSource", "GuidancePhase"]
+__all__ = [
+    "ControlAuthority",
+    "ControlSource",
+    "GuidancePhase",
+    "GuidedEpisode",
+    "GuidedSample",
+]
