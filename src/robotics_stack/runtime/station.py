@@ -177,6 +177,10 @@ class RobotStation:
             compatible_schema = int(hello.get("schema_version", -1)) == self.schema.version
             if hello.get("type") != "hello" or not compatible_schema:
                 raise ValueError("policy schema does not match station")
+            connection_mode = str(hello.get("mode", "control"))
+            if connection_mode not in {"control", "observe"}:
+                raise ValueError("policy connection mode must be control or observe")
+            observe_only = connection_mode == "observe"
             await self._send(
                 {
                     "type": "hello",
@@ -184,10 +188,14 @@ class RobotStation:
                     "state": self.supervisor.state.value,
                     "session_id": self.supervisor.session_id,
                     "control_generation": self.supervisor.control_generation,
+                    "read_only": observe_only,
                 }
             )
+            if observe_only:
+                await self._receive_loop(websocket, observe_only=True)
+                return
             observation_task = asyncio.create_task(self._observation_loop())
-            receive_task = asyncio.create_task(self._receive_loop(websocket))
+            receive_task = asyncio.create_task(self._receive_loop(websocket, observe_only=False))
             _done, pending = await asyncio.wait(
                 {observation_task, receive_task}, return_when=asyncio.FIRST_COMPLETED
             )
@@ -210,22 +218,28 @@ class RobotStation:
             ):
                 self.pause("policy action watchdog expired")
             if self.supervisor.state == RunState.RUNNING:
-                self._observation_id += 1
-                observation = Observation(
-                    observation_id=self._observation_id,
-                    station_monotonic_ns=time.monotonic_ns(),
-                    state=self.robot.observation(),
-                    images=self.cameras.frames() if self.cameras is not None else {},
-                    control_generation=self.supervisor.control_generation,
-                )
-                message = observation_message(observation)
-                message["session_id"] = self.supervisor.session_id
-                await self._send(message)
+                await self._send(self._observation_message())
             await asyncio.sleep(1.0 / self.schema.control_hz)
 
-    async def _receive_loop(self, websocket: Any) -> None:
+    def _observation_message(self) -> dict[str, Any]:
+        self._observation_id += 1
+        observation = Observation(
+            observation_id=self._observation_id,
+            station_monotonic_ns=time.monotonic_ns(),
+            state=self.robot.observation(),
+            images=self.cameras.frames() if self.cameras is not None else {},
+            control_generation=self.supervisor.control_generation,
+        )
+        message = observation_message(observation)
+        message["session_id"] = self.supervisor.session_id
+        return message
+
+    async def _receive_loop(self, websocket: Any, *, observe_only: bool) -> None:
         async for raw_message in websocket:
             message = json.loads(raw_message)
+            if observe_only and message.get("type") == "observation_request":
+                await self._send(self._observation_message())
+                continue
             if message.get("type") == "rtc_status":
                 # Remote telemetry does not alter local authority.
                 self._rtc_status = {
@@ -244,6 +258,10 @@ class RobotStation:
                 }
                 continue
             if message.get("type") != "action":
+                continue
+            if observe_only:
+                self._rejected_actions += 1
+                self._last_rejection = "read-only connection cannot send actions"
                 continue
             action = parse_action(message)
             verdict = self.supervisor.validate(action)

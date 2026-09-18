@@ -75,3 +75,52 @@ def test_station_accepts_only_current_network_action() -> None:
             station.disconnect()
 
     asyncio.run(scenario())
+
+
+def test_station_observer_can_request_live_frames_without_arming_motion() -> None:
+    async def scenario() -> None:
+        schema = _schema()
+        robot = FakeRobot(schema)
+        station = RobotStation(robot, schema)
+        station.connect()
+        port = _port()
+        server = asyncio.create_task(station.serve("127.0.0.1", port))
+        await asyncio.sleep(0.05)
+        try:
+            from websockets.asyncio.client import connect
+
+            async with connect(f"ws://127.0.0.1:{port}") as client:
+                await client.send(
+                    json.dumps({"type": "hello", "schema_version": 1, "mode": "observe"})
+                )
+                hello = json.loads(await client.recv())
+                assert hello["read_only"] is True
+                assert hello["state"] == "ready"
+                await client.send(json.dumps({"type": "observation_request"}))
+                observation = parse_observation(json.loads(await client.recv()))
+                assert observation.state == (0.0, 0.0)
+
+                await client.send(
+                    json.dumps(
+                        action_message(
+                            PolicyAction(
+                                session_id="not-armed",
+                                sequence_id=1,
+                                observation_id=observation.observation_id,
+                                station_monotonic_ns=observation.station_monotonic_ns,
+                                schema_version=1,
+                                values=(0.2, 0.5),
+                            )
+                        )
+                    )
+                )
+                await asyncio.sleep(0.03)
+                assert station.status().rejected_actions == 1
+                assert station.status().state == "ready"
+        finally:
+            server.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await server
+            station.disconnect()
+
+    asyncio.run(scenario())

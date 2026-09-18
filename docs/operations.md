@@ -33,3 +33,10 @@ orientation and crop before starting a run.
 Use `rstack inspect <checkpoint>` before deployment. State/action order and
 camera requirements must match the station profile. RTC mode requires a
 checkpoint trained with RTC support and a reviewed latency budget.
+
+To measure a checkpoint on live camera and robot observations without arming
+the station or sending actions, run:
+
+```bash
+python scripts/measure_policy_latency.py --checkpoint <checkpoint>
+```
