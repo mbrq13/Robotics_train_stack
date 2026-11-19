@@ -46,6 +46,8 @@ class RobotStation:
         motion_mode: str = "direct",
         stream_rate_hz: float = 100.0,
         cameras: CameraHub | None = None,
+        camera_max_age_ms: float = 250.0,
+        camera_max_skew_ms: float = 60.0,
         home_action: tuple[float, ...] | None = None,
     ):
         self.robot = robot
@@ -58,6 +60,8 @@ class RobotStation:
         self.motion_mode = motion_mode
         self.stream_rate_hz = stream_rate_hz
         self.cameras = cameras
+        self.camera_max_age_ms = camera_max_age_ms
+        self.camera_max_skew_ms = camera_max_skew_ms
         self.home_action = home_action
         self.policy_connected = False
         self._observation_id = 0
@@ -294,7 +298,14 @@ class RobotStation:
             observation_id=self._observation_id,
             station_monotonic_ns=time.monotonic_ns(),
             state=self.robot.observation(),
-            images=self.cameras.frames() if self.cameras is not None else {},
+            images=(
+                self.cameras.frames(
+                    max_age_ms=self.camera_max_age_ms,
+                    max_skew_ms=self.camera_max_skew_ms,
+                )
+                if self.cameras is not None
+                else {}
+            ),
             control_generation=self.supervisor.control_generation,
         )
         message = observation_message(observation)

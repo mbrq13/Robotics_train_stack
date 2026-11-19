@@ -1,0 +1,48 @@
+# DreamAPI credentials are read from DREAM_API_KEY and ~/.dreamlabs/credentials.
+station_url: ws://127.0.0.1:8765
+checkpoint: dreamlabs/dream-1-beta
+task: "pick up the object and place it in the container"
+
+arm_file: ../../assets/robots/piper/piper_arm.json
+require_tcp_confirmation: true
+
+camera_roles:
+  left: wrist_l
+  top: overhead
+  right: wrist_r
+
+timeout_ms: 15000
+obs_window: 9
+obs_fps: 5
+action_hz: 20
+execution_horizon: 30
+sync_above_ms: 700
+# The official physical loop discards a reply older than this, rather than
+# rewinding or jumping through a stale plan. A cold pool gets a separate limit.
+action_timeout_s: 3
+first_chunk_timeout_s: 900
+ik_solve: traj
+
+# HandUMI's BiPiper URDF places parallel bases 0.68 m apart (+/-0.34 m).
+# Regions are per-arm IK constraints, not a measured tabletop collision model.
+# The tabletop is 0.03 m below each base in HandUMI's simulation calibration;
+# lo.z=-0.05 below must not be treated as clearance from that tabletop.
+ik_region:
+  left:
+    # -0.05 keeps the base-link collision centres inside the fenced region.
+    lo: [-0.05, -0.20, -0.05]
+    hi: [0.65, 0.45, 0.65]
+  right:
+    lo: [-0.05, -0.45, -0.05]
+    hi: [0.65, 0.20, 0.65]
+
+# A centered support is 0.34 m toward the other arm. Verify its actual center,
+# radius and height on the physical rig before enabling motion.
+ik_keep_out:
+  left:
+    - {kind: capsule, center: [0.0, -0.34, 0.0], radius: 0.08, height: 1.0}
+  right:
+    - {kind: capsule, center: [0.0, 0.34, 0.0], radius: 0.08, height: 1.0}
+
+# true requests observations and runs Dream without ever sending a command.
+dry_run: true

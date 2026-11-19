@@ -1,0 +1,37 @@
+# DREAM_API_KEY is read from the environment or ~/.dreamlabs/credentials.
+station_url: ws://127.0.0.1:8765
+checkpoint: dreamlabs/dream-1-beta
+task: "pick up the object and place it in the container"
+
+# Only q_r_chunk is exposed to the station. The fixed left state below exists
+# solely because the base checkpoint retains two-hand context.
+mode: so100_single
+ik_arm: so101_faas
+dummy_left_joints: [0.3409, -1.7104, 1.5285, 1.1724, -1.4119]
+dummy_left_grip: 1.0
+
+camera_roles:
+  left: wrist_l
+  top: overhead
+  right: wrist_r
+
+timeout_ms: 15000
+obs_window: 9
+obs_fps: 5
+action_hz: 20
+execution_horizon: 30
+sync_above_ms: 700
+action_timeout_s: 3
+first_chunk_timeout_s: 900
+ik_solve: traj
+
+# Workspace fence in the physical arm's base frame: x forward, y left, z up.
+# Measure the table and mounts before widening it.
+ik_region:
+  right:
+    lo: [-0.03, -0.35, -0.01]
+    hi: [0.45, 0.35, 0.45]
+
+# Start with inference only. Set false only after dry-run inspection, measured
+# home verification and an unobstructed low-speed test.
+dry_run: true

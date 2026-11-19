@@ -71,6 +71,11 @@ class PiperArmKinematics:
         transform, _, _ = self._chain(joints)
         return transform
 
+    def link_positions(self, joints: np.ndarray) -> np.ndarray:
+        """Return base, six joint origins and TCP positions in the configured base frame."""
+        tool, origins, _ = self._chain(joints)
+        return np.vstack((self._base[:3, 3], origins, tool[:3, 3]))
+
     def jacobian(self, joints: np.ndarray) -> np.ndarray:
         """Return the geometric position-and-orientation Jacobian."""
         tool, origins, axes = self._chain(joints)

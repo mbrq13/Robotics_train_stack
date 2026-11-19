@@ -1,0 +1,89 @@
+<?xml version="1.0"?>
+<!-- Piper chain in the physical SDK joint convention; local visual/collision meshes. -->
+<robot name="piper_arm">
+  <link name="base_link">
+    <visual><geometry><mesh filename="meshes/base_link.STL"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/base_link.STL"/></geometry></collision>
+  </link>
+  <link name="link1">
+    <visual><geometry><mesh filename="meshes/link1.STL"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/link1.STL"/></geometry></collision>
+  </link>
+  <joint name="joint1" type="revolute">
+    <origin xyz="0 0 0.123" rpy="0 0 0"/>
+    <parent link="base_link"/><child link="link1"/><axis xyz="0 0 1"/>
+    <limit lower="-2.618" upper="2.618" effort="100" velocity="0.5"/>
+  </joint>
+  <link name="link2">
+    <visual><geometry><mesh filename="meshes/link2.STL"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/link2.STL"/></geometry></collision>
+  </link>
+  <joint name="joint2" type="revolute">
+    <origin xyz="0 0 0" rpy="1.5708 -0.1359 -3.1416"/>
+    <parent link="link1"/><child link="link2"/><axis xyz="0 0 1"/>
+    <limit lower="0" upper="3.14" effort="100" velocity="0.5"/>
+  </joint>
+  <link name="link3">
+    <visual><geometry><mesh filename="meshes/link3.STL"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/link3.STL"/></geometry></collision>
+  </link>
+  <joint name="joint3" type="revolute">
+    <origin xyz="0.28503 0 0" rpy="0 0 -1.7939"/>
+    <parent link="link2"/><child link="link3"/><axis xyz="0 0 1"/>
+    <limit lower="-2.967" upper="0" effort="100" velocity="0.5"/>
+  </joint>
+  <link name="link4">
+    <visual><geometry><mesh filename="meshes/link4.STL"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/link4.STL"/></geometry></collision>
+  </link>
+  <joint name="joint4" type="revolute">
+    <origin xyz="-0.021984 -0.25075 0" rpy="1.5708 0 0"/>
+    <parent link="link3"/><child link="link4"/><axis xyz="0 0 1"/>
+    <limit lower="-1.745" upper="1.745" effort="100" velocity="0.5"/>
+  </joint>
+  <link name="link5">
+    <visual><geometry><mesh filename="meshes/link5.STL"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/link5.STL"/></geometry></collision>
+  </link>
+  <joint name="joint5" type="revolute">
+    <origin xyz="0 0 0" rpy="-1.5708 0 0"/>
+    <parent link="link4"/><child link="link5"/><axis xyz="0 0 1"/>
+    <limit lower="-1.22" upper="1.22" effort="100" velocity="0.5"/>
+  </joint>
+  <link name="link6">
+    <visual><geometry><mesh filename="meshes/link6.STL"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/link6.STL"/></geometry></collision>
+  </link>
+  <joint name="joint6" type="revolute">
+    <origin xyz="0.000088259 -0.091 0" rpy="1.5708 0 0"/>
+    <parent link="link5"/><child link="link6"/><axis xyz="0 0 1"/>
+    <limit lower="-2.0944" upper="2.0944" effort="100" velocity="0.5"/>
+  </joint>
+  <link name="gripper_base">
+    <visual><geometry><mesh filename="meshes/gripper_base.STL"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/gripper_base.STL"/></geometry></collision>
+  </link>
+  <joint name="flange_to_gripper" type="fixed">
+    <parent link="link6"/><child link="gripper_base"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+  <link name="link7">
+    <visual><geometry><mesh filename="meshes/link7.STL"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/link7.STL"/></geometry></collision>
+  </link>
+  <joint name="finger_left" type="prismatic">
+    <origin xyz="0 0 0.1358" rpy="1.5708 0 0"/>
+    <parent link="gripper_base"/><child link="link7"/><axis xyz="0 0 1"/>
+    <limit lower="0" upper="0.035" effort="10" velocity="0.035"/>
+  </joint>
+  <link name="link8">
+    <visual><geometry><mesh filename="meshes/link8.STL"/></geometry></visual>
+    <collision><geometry><mesh filename="meshes/link8.STL"/></geometry></collision>
+  </link>
+  <joint name="finger_right" type="prismatic">
+    <origin xyz="0 0 0.1358" rpy="1.5708 0 -3.1416"/>
+    <parent link="gripper_base"/><child link="link8"/><axis xyz="0 0 -1"/>
+    <limit lower="-0.035" upper="0" effort="10" velocity="0.035"/>
+    <mimic joint="finger_left" multiplier="-1" offset="0"/>
+  </joint>
+</robot>

@@ -17,11 +17,23 @@ rstack = "robotics_stack.cli:main"
 [project.optional-dependencies]
 station = [
   "websockets>=13.1",
-  "opencv-python>=4.10",
-  "piper_sdk @ git+https://github.com/agilexrobotics/piper_sdk.git",
+  "opencv-python-headless>=4.10",
+  "piper_sdk @ git+https://github.com/agilexrobotics/piper_sdk.git@b847e5393a7ce6ff8508d713eca7bdd3a42421b4",
 ]
 policy = ["websockets>=13.1", "torch>=2.4"]
 policy-lerobot = ["websockets>=13.1", "torch>=2.4", "lerobot>=0.5.1", "huggingface_hub>=0.27", "Pillow>=10.4"]
+dream = ["dreamlabs==1.0.23", "websockets>=13.1"]
+so100 = [
+  "dreamlabs[so101]==1.0.23",
+  "websockets>=13.1",
+  "opencv-python-headless>=4.10",
+]
+dream-replay = [
+  "dreamlabs==1.0.23",
+  "av>=14",
+  "opencv-python-headless>=4.10",
+  "pyarrow>=18",
+]
 ui = ["fastapi>=0.115", "uvicorn[standard]>=0.30"]
 sim = ["Pillow>=10.4", "viser>=0.2"]
 dev = ["pytest>=8.3", "ruff>=0.8"]

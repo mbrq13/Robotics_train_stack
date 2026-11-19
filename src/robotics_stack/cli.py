@@ -6,6 +6,8 @@ import argparse
 import asyncio
 import json
 import time
+from dataclasses import replace
+from pathlib import Path
 
 from robotics_stack.config.loaders import load_camera_configs, load_station_config, load_yaml
 from robotics_stack.evaluation.replay import evaluate_state_mlp
@@ -35,6 +37,8 @@ def _station(args: argparse.Namespace) -> None:
         motion_mode=str(station_cfg.get("motion_mode", "direct")),
         stream_rate_hz=float(station_cfg.get("stream_rate_hz", 100)),
         cameras=cameras,
+        camera_max_age_ms=float(station_cfg.get("camera_max_age_ms", 250)),
+        camera_max_skew_ms=float(station_cfg.get("camera_max_skew_ms", 60)),
         home_action=tuple(float(value) for value in station_cfg["home_action"])
         if "home_action" in station_cfg
         else None,
@@ -332,6 +336,74 @@ def main() -> None:
     policy.add_argument("--config", required=True)
     policy.add_argument("--checkpoint", required=True)
     policy.set_defaults(func=_policy)
+    dream = commands.add_parser("dream", help="run the Dream-1 zero-shot Piper worker")
+    dream.add_argument("--config", default="configs/deploy/dream1_piper.yaml")
+    dream.add_argument("--task", default="", help="override the task in the config")
+    dream.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="run inference from read-only observations and never send actions",
+    )
+    dream.set_defaults(func=_dream)
+    dream_replay = commands.add_parser(
+        "dream-replay", help="evaluate Dream-1 on a recorded LeRobot episode without hardware"
+    )
+    dream_replay.add_argument("--config", default="configs/deploy/dream1_piper.yaml")
+    dream_replay.add_argument(
+        "--dataset", default="NONHUMAN-RESEARCH/yellow-towel-101-piper-640-v2"
+    )
+    dream_replay.add_argument("--episode", type=int, default=0)
+    dream_replay.add_argument("--queries", type=int, default=3)
+    dream_replay.add_argument("--task", default="Fold the yellow towel")
+    dream_replay.add_argument("--output", default="outputs/dream_replay")
+    dream_replay.add_argument("--cache", default="artifacts/dream_replay_cache")
+    dream_replay.add_argument(
+        "--fov-ablation", action=argparse.BooleanOptionalAction, default=True
+    )
+    dream_replay.set_defaults(func=_dream_replay)
+    dream_shadow = commands.add_parser(
+        "dream-shadow", help="roll Dream actions through a simulated Piper over recorded video"
+    )
+    dream_shadow.add_argument("--config", default="configs/deploy/dream1_piper.yaml")
+    dream_shadow.add_argument(
+        "--dataset", default="NONHUMAN-RESEARCH/yellow-towel-101-piper-640-v2"
+    )
+    dream_shadow.add_argument("--episode", type=int, default=0)
+    dream_shadow.add_argument("--task", default="Fold the yellow towel")
+    dream_shadow.add_argument("--output", default="outputs/dream_shadow")
+    dream_shadow.add_argument("--cache", default="artifacts/dream_replay_cache")
+    dream_shadow.add_argument(
+        "--camera-preprocess-profile",
+        default=None,
+        help="camera-owned preprocessing profile; omitted means the regular center crop",
+    )
+    dream_shadow.set_defaults(func=_dream_shadow)
+    dream_preflight = commands.add_parser(
+        "dream-preflight", help="validate Dream-1 robot, IK and camera contracts"
+    )
+    dream_preflight.add_argument(
+        "--robot-config", default="configs/robots/piper_bimanual_dream1.yaml"
+    )
+    dream_preflight.add_argument(
+        "--dream-config", default="configs/deploy/dream1_piper.yaml"
+    )
+    dream_preflight.add_argument("--offline", action="store_true", help="skip DreamAPI access")
+    dream_preflight.add_argument(
+        "--check-devices", action="store_true", help="require all configured /dev paths"
+    )
+    dream_preflight.set_defaults(func=_dream_preflight)
+    confirm_tcp = commands.add_parser(
+        "dream-confirm-tcp", help="confirm the measured Piper tool frame for Dream IK"
+    )
+    confirm_tcp.add_argument(
+        "--arm-file", default="assets/robots/piper/piper_arm.json"
+    )
+    confirm_tcp.add_argument(
+        "--i-measured-this-on-the-real-gripper",
+        action="store_true",
+        help="required acknowledgement that TCP and axes were checked physically",
+    )
+    confirm_tcp.set_defaults(func=_dream_confirm_tcp)
     train = commands.add_parser("train", help="train the native state_mlp policy")
     train.add_argument("--data", required=True)
     train.add_argument("--output", required=True)
@@ -429,6 +501,75 @@ def _policy(args: argparse.Namespace) -> None:
             action_smoothing_alpha=float(config.get("action_smoothing_alpha", 1.0)),
         )
     )
+
+
+def _dream(args: argparse.Namespace) -> None:
+    from robotics_stack.policies.dream1 import Dream1Config
+    from robotics_stack.services.dream_worker import run_dream_agent
+
+    config = Dream1Config.load(args.config)
+    if args.task:
+        config = replace(config, task=str(args.task).strip())
+        config.validate()
+    if args.dry_run:
+        config = replace(config, dry_run=True)
+    asyncio.run(run_dream_agent(config))
+
+
+def _dream_replay(args: argparse.Namespace) -> None:
+    from robotics_stack.evaluation.dream_dataset_replay import run_dream_dataset_replay
+
+    report = run_dream_dataset_replay(
+        config_path=args.config,
+        dataset_id=args.dataset,
+        episode=args.episode,
+        queries=args.queries,
+        task=args.task,
+        output=Path(args.output),
+        cache=Path(args.cache),
+        fov_ablation=args.fov_ablation,
+    )
+    print(json.dumps(report, indent=2))
+
+
+def _dream_shadow(args: argparse.Namespace) -> None:
+    from robotics_stack.evaluation.dream_dataset_replay import run_dream_shadow_rollout
+
+    report = run_dream_shadow_rollout(
+        config_path=args.config,
+        dataset_id=args.dataset,
+        episode=args.episode,
+        task=args.task,
+        output=Path(args.output),
+        cache=Path(args.cache),
+        camera_preprocess_profile=args.camera_preprocess_profile,
+    )
+    print(json.dumps(report, indent=2))
+
+
+def _dream_preflight(args: argparse.Namespace) -> None:
+    from robotics_stack.evaluation.dream_preflight import check_dream_deployment
+
+    report = check_dream_deployment(
+        args.robot_config,
+        args.dream_config,
+        check_api=not args.offline,
+        check_devices=args.check_devices,
+    )
+    print(json.dumps(report.to_dict(), indent=2))
+
+
+def _dream_confirm_tcp(args: argparse.Namespace) -> None:
+    from robotics_stack.policies.dream1 import confirm_arm_tcp
+
+    if not args.i_measured_this_on_the_real_gripper:
+        raise RuntimeError(
+            "measure TCP, approach and jaw axes on the real gripper, then pass "
+            "--i-measured-this-on-the-real-gripper"
+        )
+    path = Path(args.arm_file).expanduser().resolve()
+    digest = confirm_arm_tcp(path)
+    print(json.dumps({"arm_file": str(path), "tcp_digest": digest}, indent=2))
 
 
 if __name__ == "__main__":

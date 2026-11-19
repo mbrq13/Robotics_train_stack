@@ -1,0 +1,99 @@
+schema:
+  name: bipiper-dream1-v1
+  version: 1
+  control_hz: 20
+  action_names: &piper_names
+    [left_joint_1, left_joint_2, left_joint_3, left_joint_4, left_joint_5, left_joint_6,
+     left_gripper, right_joint_1, right_joint_2, right_joint_3, right_joint_4,
+     right_joint_5, right_joint_6, right_gripper]
+  state_names: *piper_names
+  camera_names: [left, top, right]
+  action_space: radians
+  robot_type: piper
+  joint_limits:
+    - {minimum: -2.617993878, maximum: 2.617993878, max_speed: 0.5, max_acceleration: 1.5}
+    - {minimum: 0.0, maximum: 3.141592654, max_speed: 0.5, max_acceleration: 1.5}
+    - {minimum: -2.967059728, maximum: 0.0, max_speed: 0.5, max_acceleration: 1.5}
+    - {minimum: -1.745329252, maximum: 1.745329252, max_speed: 0.5, max_acceleration: 1.5}
+    - {minimum: -1.221730476, maximum: 1.221730476, max_speed: 0.5, max_acceleration: 1.5}
+    - {minimum: -2.094395102, maximum: 2.094395102, max_speed: 0.5, max_acceleration: 1.5}
+    - {minimum: 0.0, maximum: 1.0, max_speed: 0.5, max_acceleration: 2.0}
+    - {minimum: -2.617993878, maximum: 2.617993878, max_speed: 0.5, max_acceleration: 1.5}
+    - {minimum: 0.0, maximum: 3.141592654, max_speed: 0.5, max_acceleration: 1.5}
+    - {minimum: -2.967059728, maximum: 0.0, max_speed: 0.5, max_acceleration: 1.5}
+    - {minimum: -1.745329252, maximum: 1.745329252, max_speed: 0.5, max_acceleration: 1.5}
+    - {minimum: -1.221730476, maximum: 1.221730476, max_speed: 0.5, max_acceleration: 1.5}
+    - {minimum: -2.094395102, maximum: 2.094395102, max_speed: 0.5, max_acceleration: 1.5}
+    - {minimum: 0.0, maximum: 1.0, max_speed: 0.5, max_acceleration: 2.0}
+
+station:
+  host: 0.0.0.0
+  port: 8765
+  ui_host: 0.0.0.0
+  ui_port: 8080
+  # A slow/synchronous Dream refill may hold after a chunk. The policy discards
+  # replies at 3 s; the station pauses shortly after that if no action returns.
+  watchdog_ms: 3500
+  # A cold Dream pool can take up to 15 minutes before its first usable chunk.
+  first_action_timeout_ms: 960000
+  action_age_ms: 500
+  scheduled_action_age_ms: 6500
+  motion_mode: bounded
+  stream_rate_hz: 100
+  camera_max_age_ms: 250
+  camera_max_skew_ms: 60
+
+robot:
+  driver: piper_bimanual
+  action_space: radians
+  options:
+    left_port: can0
+    right_port: can1
+    gripper_min_microm: 0
+    gripper_max_microm: 70000
+    gripper_effort: 1000
+    enable_timeout_s: 10
+    startup_speed_percent: 5
+    motion_speed_percent: 20
+    disable_on_disconnect: true
+    # Use v3 instead only when both arms run firmware/protocol 1.8-8 or newer.
+    sdk_interface: v2
+
+cameras:
+  - name: left
+    device: /dev/v4l/by-path/pci-0000:06:00.4-usb-0:1:1.0-video-index0
+    source_width: 640
+    source_height: 480
+    width: 640
+    height: 360
+    fps: 30
+    backend: V4L2
+    fourcc: MJPG
+    strict_source_shape: true
+    crop: center_16_9
+    jpeg_quality: 85
+  - name: top
+    device: /dev/v4l/by-path/pci-0000:06:00.3-usb-0:1:1.0-video-index0
+    source_width: 1344
+    source_height: 376
+    width: 640
+    height: 360
+    fps: 30
+    backend: V4L2
+    # ZED Mini UVC publishes the stereo frame as uncompressed YUV 4:2:2.
+    fourcc: YUYV
+    strict_source_shape: true
+    crop: left_half_center_16_9
+    jpeg_quality: 85
+  - name: right
+    device: /dev/v4l/by-path/pci-0000:06:00.4-usb-0:2:1.0-video-index0
+    source_width: 640
+    source_height: 480
+    width: 640
+    height: 360
+    fps: 30
+    backend: V4L2
+    fourcc: MJPG
+    strict_source_shape: true
+    crop: center_16_9
+    jpeg_quality: 85

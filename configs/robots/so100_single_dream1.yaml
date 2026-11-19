@@ -1,0 +1,89 @@
+schema:
+  name: so100-single-dream1-v1
+  version: 1
+  control_hz: 20
+  action_names: &so100_names
+    [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]
+  state_names: *so100_names
+  camera_names: [left, top, right]
+  action_space: radians
+  robot_type: so100
+  # Conservative intersection of the physical and Dream IK arm limits. The
+  # calibrated servo bus applies its own, potentially narrower, second guard.
+  joint_limits:
+    - {minimum: -1.91986, maximum: 1.91986, max_speed: 0.5, max_acceleration: 1.0}
+    - {minimum: -1.725728, maximum: 1.74533, max_speed: 0.5, max_acceleration: 1.0}
+    - {minimum: -1.69, maximum: 1.486427, max_speed: 0.5, max_acceleration: 1.0}
+    - {minimum: -1.65806, maximum: 1.65806, max_speed: 0.5, max_acceleration: 1.0}
+    - {minimum: -2.74385, maximum: 2.84121, max_speed: 0.5, max_acceleration: 1.0}
+    - {minimum: 0.0, maximum: 1.0, max_speed: 0.5, max_acceleration: 2.0}
+
+station:
+  host: 0.0.0.0
+  port: 8765
+  ui_host: 0.0.0.0
+  ui_port: 8080
+  watchdog_ms: 3500
+  first_action_timeout_ms: 960000
+  action_age_ms: 500
+  scheduled_action_age_ms: 6500
+  motion_mode: bounded
+  stream_rate_hz: 60
+  camera_max_age_ms: 250
+  camera_max_skew_ms: 60
+
+robot:
+  driver: so100_single
+  action_space: radians
+  options:
+    # Resolve this once with: ls -l /dev/serial/by-id /dev/serial/by-path
+    port: /dev/serial/by-id/REPLACE_WITH_SO100_ADAPTER
+    # Use the calibration produced for this exact follower arm.
+    calibration_file: ~/.cache/huggingface/lerobot/calibration/robots/so100_follower/so100.json
+    # Measure a collision-free five-joint pose in radians before removing the
+    # placeholders. Startup refuses these strings, so an unmeasured home cannot
+    # accidentally become a motion target.
+    home: [REPLACE_RAD, REPLACE_RAD, REPLACE_RAD, REPLACE_RAD, REPLACE_RAD]
+    disable_on_disconnect: true
+
+# Dream's base checkpoint still consumes its three visual slots. These are
+# perception cameras only; there is still exactly one physical arm driver.
+cameras:
+  - name: left
+    device: /dev/v4l/by-path/pci-0000:06:00.4-usb-0:1:1.0-video-index0
+    source_width: 640
+    source_height: 480
+    width: 640
+    height: 360
+    fps: 30
+    backend: V4L2
+    fourcc: MJPG
+    strict_source_shape: true
+    crop: none
+    preprocess_profile: configs/cameras/svpro_imx335_fisheye.yaml
+    jpeg_quality: 85
+  - name: top
+    device: /dev/v4l/by-path/pci-0000:06:00.3-usb-0:1:1.0-video-index0
+    source_width: 1344
+    source_height: 376
+    width: 640
+    height: 360
+    fps: 30
+    backend: V4L2
+    fourcc: YUYV
+    strict_source_shape: true
+    crop: left_half_center_16_9
+    jpeg_quality: 85
+  - name: right
+    device: /dev/v4l/by-path/pci-0000:06:00.4-usb-0:2:1.0-video-index0
+    source_width: 640
+    source_height: 480
+    width: 640
+    height: 360
+    fps: 30
+    backend: V4L2
+    fourcc: MJPG
+    strict_source_shape: true
+    crop: none
+    preprocess_profile: configs/cameras/svpro_imx335_fisheye.yaml
+    jpeg_quality: 85

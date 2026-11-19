@@ -1,0 +1,16 @@
+# Camera-owned preprocessing for the SVPRO IMX335 M12 fisheye modules.
+# Remove `preprocess_profile` from a camera entry when replacing it with a
+# rectilinear camera. This profile is deliberately separate from Dream policy
+# configuration because it describes the physical optics, not the model.
+type: equidistant_fisheye
+roles: [left, right]
+
+# Advertised lens values. Replace these with measured calibration parameters
+# before treating the transform as production-calibrated.
+source_hfov_deg: 200.0
+source_vfov_deg: 150.0
+
+# Virtual rectilinear view close to the reference physical camera geometry.
+target_hfov_deg: 84.0
+output_width: 640
+output_height: 360

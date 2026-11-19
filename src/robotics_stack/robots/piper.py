@@ -43,6 +43,8 @@ class PiperConnection:
     feedback_timeout_s: float = 1.5
     startup_speed_percent: int = 10
     motion_speed_percent: int = 100
+    disable_on_disconnect: bool = True
+    sdk_interface: str = "v2"
     action_space: str = "radians"
     gripper_calibration_file: str | None = None
 
@@ -67,13 +69,16 @@ def _read_gripper_calibration(path: str | None, side: str) -> tuple[int, int] | 
 class _Arm:
     def __init__(self, port: str, side: str, config: PiperConnection):
         try:
-            from piper_sdk import C_PiperInterface_V2
+            from piper_sdk import C_PiperInterface_V2, C_PiperInterface_V3
         except ImportError as exc:
             raise RuntimeError("install the station extra to use Piper hardware") from exc
+        interfaces = {"v2": C_PiperInterface_V2, "v3": C_PiperInterface_V3}
+        if config.sdk_interface.lower() not in interfaces:
+            raise ValueError("Piper sdk_interface must be 'v2' or 'v3'")
         self.port = port
         self.side = side
         self.config = config
-        self.sdk = C_PiperInterface_V2(port)
+        self.sdk = interfaces[config.sdk_interface.lower()](port)
         self.gripper_min = config.gripper_min_microm
         self.gripper_max = config.gripper_max_microm
         self.joint_min_deg = np.asarray(
@@ -185,9 +190,15 @@ class _Arm:
             raise RuntimeError(f"{self.port}: invalid Piper gripper range")
 
     def close(self) -> None:
-        close = getattr(self.sdk, "DisconnectPort", None)
-        if close is not None:
-            close()
+        try:
+            if self.config.disable_on_disconnect:
+                disable = getattr(self.sdk, "DisablePiper", None)
+                if disable is not None:
+                    disable()
+        finally:
+            close = getattr(self.sdk, "DisconnectPort", None)
+            if close is not None:
+                close()
 
     def _physical_joints(self) -> np.ndarray:
         joints = self.sdk.GetArmJointMsgs().joint_state
