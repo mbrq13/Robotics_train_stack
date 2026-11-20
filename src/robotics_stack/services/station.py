@@ -31,6 +31,7 @@ class StationStatus:
     control_phase: str
     cameras: dict[str, dict[str, object]]
     rtc: dict[str, object]
+    task: str
 
 
 class RobotStation:
@@ -52,6 +53,7 @@ class RobotStation:
     ):
         self.robot = robot
         self.schema = schema
+        self.task = ""
         self.supervisor = MotionSupervisor(schema, action_age_ms, scheduled_action_age_ms)
         self.watchdog_ms = watchdog_ms
         self.first_action_timeout_ms = first_action_timeout_ms
@@ -94,10 +96,14 @@ class RobotStation:
             if self._streamer is not None:
                 self._streamer.stop()
                 self._streamer = None
-            if self.cameras is not None:
-                self.cameras.disconnect()
-            self.robot.disconnect()
-            self.supervisor.state = RunState.DISCONNECTED
+            try:
+                if self.cameras is not None:
+                    self.cameras.disconnect()
+            finally:
+                try:
+                    self.robot.disconnect()
+                finally:
+                    self.supervisor.state = RunState.DISCONNECTED
 
     def validate_hardware(self) -> None:
         if self.supervisor.state == RunState.DISCONNECTED:
@@ -113,6 +119,13 @@ class RobotStation:
 
     def start(self) -> None:
         self.supervisor.start()
+
+    def set_task(self, task: str) -> None:
+        if self.supervisor.state not in {RunState.READY, RunState.PAUSED}:
+            raise RuntimeError("Pause the robot before editing the task")
+        if not isinstance(task, str) or not task.strip() or len(task.strip()) > 2000:
+            raise ValueError("Task must contain between 1 and 2000 characters")
+        self.task = task.strip()
 
     def pause(self, reason: str = "operator pause") -> None:
         self._hold_robot()
@@ -211,6 +224,7 @@ class RobotStation:
                 for name, camera in health.items()
             },
             rtc=dict(self._rtc_status),
+            task=self.task,
         )
 
     def camera_frame(self, name: str) -> bytes:
@@ -275,7 +289,7 @@ class RobotStation:
             await asyncio.gather(*pending, return_exceptions=True)
         except Exception as exc:
             self.supervisor.fault(f"policy link failed: {exc}")
-            self.robot.hold()
+            self._hold_robot()
         finally:
             self.policy_connected = False
             self._connection = None
@@ -310,6 +324,7 @@ class RobotStation:
         )
         message = observation_message(observation)
         message["session_id"] = self.supervisor.session_id
+        message["task"] = self.task
         return message
 
     async def _receive_loop(self, websocket: Any, *, observe_only: bool) -> None:
@@ -331,7 +346,16 @@ class RobotStation:
                         "p95_ms",
                         "max_ms",
                         "samples",
+                        "inference_mean_ms",
+                        "inference_last_ms",
                         "error",
+                        "dry_run",
+                        "pacing_mode",
+                        "rtt_ms",
+                        "observation_hz",
+                        "action_hz",
+                        "chunks",
+                        "task",
                     }
                 }
                 continue

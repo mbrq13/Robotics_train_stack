@@ -145,3 +145,60 @@ def test_cold_pool_reply_requires_another_start_before_motion(monkeypatch):
         assert socket.receiver_cancelled
 
     asyncio.run(scenario())
+
+
+def test_ik_rounding_does_not_admit_real_limit_violations():
+    from pathlib import Path
+
+    import pytest
+
+    from robotics_stack.config.loaders import load_station_config
+    from robotics_stack.contracts import ContractError
+    from robotics_stack.services.dream_worker import _validate_ik_action
+
+    root = Path(__file__).parents[1]
+    schema, _, _ = load_station_config(root / "configs/robots/piper_bimanual_dream1.yaml")
+    row = [0.0] * 14
+    row[0] = -2.618
+    assert _validate_ik_action(schema, row)[0] == schema.joint_limits[0].minimum
+    row[0] = -2.62
+    with pytest.raises(ContractError):
+        _validate_ik_action(schema, row)
+
+
+def test_station_task_reaches_inference_and_resets_old_chunk():
+    from dataclasses import dataclass
+
+    @dataclass(frozen=True)
+    class Config:
+        task: str = "yaml task"
+        action_timeout_s: float = 3
+        first_chunk_timeout_s: float = 900
+
+    async def scenario():
+        schema = _schema()
+        row = tuple((limit.minimum + limit.maximum) / 2 for limit in schema.joint_limits)
+        policy = Policy(row)
+        policy.config = Config()
+        observed_tasks = []
+        policy.set_observation = lambda observation: observed_tasks.append(policy.config.task)
+        socket = Socket()
+        worker = asyncio.create_task(_run_loop(socket, policy, schema, dry_run=False))
+        try:
+            for generation, task in ((1, "Put grapes in yellow basket"), (2, "Pick up the ball")):
+                msg = observation_message(Observation(generation, 1_000_000_000, row,
+                                                      control_generation=generation))
+                msg.update(session_id=f"session-{generation}", task=task)
+                await socket.incoming.put(json.dumps(msg))
+                while True:
+                    action = await asyncio.wait_for(socket.actions.get(), 2)
+                    if action["control_generation"] == generation:
+                        break
+                assert observed_tasks[-1] == task
+            assert policy.resets == 2
+            assert policy.anchors == [None, None]
+        finally:
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+
+    asyncio.run(scenario())

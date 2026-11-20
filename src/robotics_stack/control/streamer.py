@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import threading
+import logging
 
 import numpy as np
 
 from robotics_stack.contracts import RobotSchema
 from robotics_stack.robots.base import RobotDriver
+
+logger = logging.getLogger(__name__)
 
 
 class MotionStreamer:
@@ -25,6 +28,8 @@ class MotionStreamer:
         self._current: np.ndarray | None = None
         self._target: np.ndarray | None = None
         self._velocity = np.zeros(schema.action_size, dtype=np.float64)
+        self._lower = np.asarray([limit.minimum for limit in schema.joint_limits])
+        self._upper = np.asarray([limit.maximum for limit in schema.joint_limits])
 
     def start(self) -> None:
         initial = np.asarray(self.robot.observation(), dtype=np.float64)
@@ -44,7 +49,20 @@ class MotionStreamer:
             self._target = target
 
     def hold(self) -> None:
-        measured = np.asarray(self.robot.observation(), dtype=np.float64)
+        """Stop trajectory generation at measured pose, or the last safe command.
+
+        A feedback sample can be slightly beyond a configured hard stop after a
+        physical overshoot. Do not turn that invalid sample into a new command:
+        retain the last in-range command so the station can pause cleanly.
+        """
+        try:
+            measured = self.schema.validate_action(self.robot.observation())
+        except Exception as exc:
+            logger.error("Cannot use out-of-range feedback for motion hold: %s", exc)
+            with self._lock:
+                if self._current is None:
+                    raise
+                measured = np.clip(self._current, self._lower, self._upper)
         with self._lock:
             self._current = measured.copy()
             self._target = measured.copy()
@@ -73,7 +91,21 @@ class MotionStreamer:
                 step = self._velocity * interval
                 remaining = self._target - self._current
                 reached = np.abs(step) >= np.abs(remaining)
-                self._current += np.where(reached, remaining, step)
+                candidate = self._current + np.where(reached, remaining, step)
+                # Acceleration-limited interpolation can otherwise overshoot a
+                # stop after an abrupt target replacement. Keep the internal
+                # state valid as well as the public target contract.
+                self._current = np.clip(candidate, self._lower, self._upper)
+                clipped = self._current != candidate
                 self._velocity[reached] = 0.0
+                self._velocity[clipped] = 0.0
                 command = tuple(float(value) for value in self._current)
-            self.robot.set_target(command)
+            try:
+                self.robot.set_target(command)
+            except Exception:
+                # A driver failure must not leave the streaming thread dead
+                # while the station is trying to hold a valid last command.
+                logger.exception("Motion streamer command rejected; retaining last safe target")
+                with self._lock:
+                    self._target = self._current.copy()
+                    self._velocity.fill(0.0)

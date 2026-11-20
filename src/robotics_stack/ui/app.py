@@ -36,6 +36,10 @@ def create_app(station: RobotStation):
     def validate():
         return _invoke(station.validate_hardware)
 
+    @app.post("/api/task")
+    def task(payload: dict):
+        return _invoke(lambda: (station.set_task(payload.get("task")), {"task": station.task})[1])
+
     @app.post("/api/arm")
     def arm():
         return _invoke(lambda: {"session_id": station.arm()})

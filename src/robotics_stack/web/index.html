@@ -12,6 +12,7 @@
     .camera-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px } .camera { overflow:hidden; padding:0; } .camera img { width:100%; aspect-ratio:16/9; display:block; object-fit:contain; background:#06080c; } .camera label { display:block; padding:9px 11px; color:var(--muted); font-size:12px; }
     .state { font-size:36px; font-weight:750; text-transform:uppercase; margin:10px 0 } .meta { color:var(--muted); line-height:1.7; font-size:14px; }
     .controls { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:20px } button { border:0; border-radius:9px; padding:12px; color:var(--ink); background:#26324a; font-weight:700; cursor:pointer; }
+    textarea { width:100%; min-height:85px; margin-top:10px; padding:12px; background:var(--bg); color:var(--ink); border:1px solid #394760; border-radius:9px; font:inherit; } button:disabled { opacity:.5; cursor:not-allowed; }
     button:hover { filter:brightness(1.15) } .primary { background:#315ecb } .warn { background:#885c12 } .danger { background:#8d2235 } #notice { min-height:24px; margin-top:14px; color:var(--muted); }
     @media (max-width:700px) { .grid { grid-template-columns:1fr } .controls { grid-template-columns:repeat(2,1fr) } }
   </style>
@@ -21,14 +22,36 @@
   <section class="grid"><article class="card"><div class="eyebrow">Run state</div><div id="state" class="state">—</div><div id="fault" class="meta">Checking station…</div>
     <div class="controls"><button onclick="call('validate')">Validate</button><button class="primary" onclick="call('arm')">Arm</button><button class="primary" onclick="call('start')">Start</button><button class="warn" onclick="call('pause')">Hold / Pause</button><button class="warn" onclick="call('home')">Home</button><button class="danger" onclick="call('reset-fault')">Reset fault</button></div>
     <div id="notice"></div></article>
-  <aside class="card"><div class="eyebrow">Live integrity</div><p class="meta">Policy link: <strong id="policy">—</strong><br>Session: <span id="session">—</span><br>Accepted actions: <span id="accepted">0</span><br>Rejected actions: <span id="rejected">0</span><br>RTC queue: <span id="rtc">Standard mode</span></p>
+  <aside class="card"><div class="eyebrow">Live integrity</div><p class="meta">Policy link: <strong id="policy">—</strong><br>Session: <span id="session">—</span><br>Accepted actions: <span id="accepted">0</span><br>Rejected actions: <span id="rejected">0</span><br>Dream timing: <span id="rtc">Standard mode</span></p>
   <p class="meta">Motion is accepted only while armed and running. A disconnected policy or expired action places the robot in hold.</p></aside></section>
+  <section class="card" style="margin-top:16px">
+    <label class="eyebrow" for="task">Dream task</label>
+    <textarea id="task" maxlength="2000" placeholder="Pick up the purple bunch of grapes and place it in the yellow basket." aria-describedby="task-status"></textarea>
+    <p class="meta">Worker task: <span id="active-task">Worker disconnected</span></p>
+    <button id="save-task" onclick="saveTask()">Save task</button>
+    <p id="task-status" class="meta">Press Enter to submit (Shift+Enter adds a line). Pause, submit the task, then Arm → Start. An empty station task uses the worker configuration.</p>
+  </section>
   <section class="card" style="margin-top:16px"><div class="eyebrow">Policy camera view</div><p class="meta">Verify framing before arming. These are the latest frames delivered to the policy worker.</p><div id="cameras" class="camera-grid"></div></section>
 </main><script>
 const notice = document.querySelector('#notice');
 let cameraNames=[];
+let taskLoaded=false;
+async function saveTask() {
+  try {
+    const r=await fetch('/api/task',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task:document.querySelector('#task').value})});
+    const data=await r.json();
+    document.querySelector('#task-status').textContent=r.ok ? 'Saved. This task will be used on the next Arm → Start.' : (data.detail||'Task rejected');
+    await refresh();
+  } catch(e) { notice.textContent='Station unavailable. Start rstack station and open http://127.0.0.1:8080.'; }
+}
+document.querySelector('#task').addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    if (!document.querySelector('#save-task').disabled) saveTask();
+  }
+});
 function renderCameras(cameras) { const names=Object.keys(cameras||{}); if (names.join('|')===cameraNames.join('|')) return; cameraNames=names; document.querySelector('#cameras').innerHTML=names.map(name=>`<article class="card camera"><img id="camera-${name}" alt="${name} camera"><label>${name} · <span id="camera-meta-${name}">waiting</span></label></article>`).join(''); }
-async function refresh() { try { const r=await fetch('/api/status'); const s=await r.json(); document.querySelector('#state').textContent=s.state; document.querySelector('#connection').textContent=s.policy_connected?'Policy connected':'Policy waiting'; document.querySelector('#policy').textContent=s.policy_connected?'Connected':'Waiting'; document.querySelector('#session').textContent=s.session_id||'—'; document.querySelector('#accepted').textContent=s.accepted_actions; document.querySelector('#rejected').textContent=s.rejected_actions; const rtc=s.rtc||{}; document.querySelector('#rtc').textContent=rtc.enabled ? `${rtc.queue_depth??0} queued · p95 ${Number(rtc.p95_ms??0).toFixed(1)} ms · underruns ${rtc.underruns??0}` : 'Standard mode'; document.querySelector('#fault').textContent=s.last_fault||rtc.error||'Station ready for the next operator action.'; renderCameras(s.cameras); for (const [name,health] of Object.entries(s.cameras||{})) { const img=document.querySelector(`#camera-${name}`); const meta=document.querySelector(`#camera-meta-${name}`); if (meta) meta.textContent=health.connected ? `${health.shape?.[1]||'?'}×${health.shape?.[0]||'?'} · ${Math.round(health.age_ms||0)} ms` : (health.error||'offline'); if (img&&health.connected) img.src=`/api/cameras/${encodeURIComponent(name)}.jpg?t=${Date.now()}`; } } catch(e) { notice.textContent='Station API unavailable: '+e; } }
-async function call(name) { const r=await fetch('/api/'+name,{method:'POST'}); const data=await r.json(); notice.textContent=r.ok ? (name+' complete') : (data.detail||'Request rejected'); refresh(); }
+async function refresh() { try { const r=await fetch('/api/status'); if (!r.ok) throw new Error('HTTP '+r.status); const s=await r.json(); if (!taskLoaded) { document.querySelector('#task').value=s.task||''; taskLoaded=true; } document.querySelector('#save-task').disabled=!['ready','paused'].includes(s.state); document.querySelector('#task').disabled=!['ready','paused'].includes(s.state); document.querySelector('#state').textContent=s.state; document.querySelector('#connection').textContent=s.policy_connected?'Policy connected':'Policy waiting'; document.querySelector('#policy').textContent=s.policy_connected?'Connected':'Waiting'; document.querySelector('#session').textContent=s.session_id||'—'; document.querySelector('#accepted').textContent=s.accepted_actions; document.querySelector('#rejected').textContent=s.rejected_actions; const rtc=s.rtc||{}; const inference=rtc.inference_mean_ms != null && Number.isFinite(Number(rtc.inference_mean_ms)) ? `inference mean ${Number(rtc.inference_mean_ms).toFixed(0)} ms${rtc.inference_last_ms != null && Number.isFinite(Number(rtc.inference_last_ms)) ? ` (last ${Number(rtc.inference_last_ms).toFixed(0)} ms)` : ''} · ${rtc.samples??0} samples` : 'inference waiting'; document.querySelector('#rtc').textContent=rtc.enabled ? `${rtc.dry_run?'DRY RUN':'MOTION'} · ${rtc.pacing_mode||'unknown'} · ${inference} · observations ${Number(rtc.observation_hz??0).toFixed(1)} Hz · rows ${Number(rtc.action_hz??0).toFixed(1)} Hz · ${rtc.queue_depth??0} queued · ${rtc.chunks??0} chunks · ${rtc.underruns??0} empty ticks` : 'Standard mode'; document.querySelector('#active-task').textContent=s.policy_connected ? (rtc.task||'Waiting for first observation') : 'Worker disconnected'; document.querySelector('#fault').textContent=s.last_fault||rtc.error||'Station ready for the next operator action.'; renderCameras(s.cameras); for (const [name,health] of Object.entries(s.cameras||{})) { const img=document.querySelector(`#camera-${name}`); const meta=document.querySelector(`#camera-meta-${name}`); if (meta) meta.textContent=health.connected ? `${health.shape?.[1]||'?'}×${health.shape?.[0]||'?'} · ${Math.round(health.age_ms||0)} ms` : (health.error||'offline'); if (img&&health.connected) img.src=`/api/cameras/${encodeURIComponent(name)}.jpg?t=${Date.now()}`; } } catch(e) { document.querySelector('#connection').textContent='Offline'; document.querySelector('#save-task').disabled=true; notice.textContent='Station unavailable. Start rstack station and open http://127.0.0.1:8080 (do not open the HTML file directly).'; } }
+async function call(name) { try { const r=await fetch('/api/'+name,{method:'POST'}); const data=await r.json(); notice.textContent=r.ok ? (name+' complete') : (data.detail||'Request rejected'); refresh(); } catch(e) { notice.textContent='Station unavailable: '+e; } }
 refresh(); setInterval(refresh, 500);
 </script></body></html>
