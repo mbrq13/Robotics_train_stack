@@ -9,12 +9,12 @@ from dataclasses import dataclass
 import numpy as np
 
 from robotics_stack.contracts import RobotSchema
+from robotics_stack.kinematics.dls import DampedLeastSquares, DlsSettings
 from robotics_stack.robots.piper_kinematics import (
     PIPER_LOWER_RAD,
     PIPER_UPPER_RAD,
     PiperArmKinematics,
 )
-from robotics_stack.teleoperators.vr.dls import DampedLeastSquares, DlsSettings
 from robotics_stack.teleoperators.vr.motion import OneEuroJointFilter
 from robotics_stack.teleoperators.vr.tracking import ControllerSample, TrackingFrame
 from robotics_stack.teleoperators.vr.transforms import anchored_target, matrix_pose
@@ -46,6 +46,11 @@ class VrTeleoperatorSettings:
         matrix = np.asarray(self.source_to_robot_rotation, dtype=np.float64)
         if matrix.shape != (9,) or not np.isfinite(matrix).all():
             raise ValueError("VR source_to_robot_rotation must contain nine finite values")
+        matrix = matrix.reshape(3, 3)
+        if not np.allclose(matrix.T @ matrix, np.eye(3), atol=1e-6) or not np.isclose(
+            np.linalg.det(matrix), 1.0, atol=1e-6
+        ):
+            raise ValueError("VR source_to_robot_rotation must be a proper rotation")
 
 
 class VrTeleoperator:
@@ -57,7 +62,11 @@ class VrTeleoperator:
     """
 
     def __init__(
-        self, schema: RobotSchema, *, settings: VrTeleoperatorSettings | None = None
+        self,
+        schema: RobotSchema,
+        *,
+        settings: VrTeleoperatorSettings | None = None,
+        dls_settings: DlsSettings | None = None,
     ) -> None:
         self.schema = schema
         self.settings = settings or VrTeleoperatorSettings()
@@ -67,11 +76,20 @@ class VrTeleoperator:
             side: DampedLeastSquares(
                 self._kinematics[side],
                 rest_joints=np.zeros(6),
-                lower=PIPER_LOWER_RAD,
-                upper=PIPER_UPPER_RAD,
-                max_speed_rad_s=np.full(6, self.settings.joint_speed_cap_rad_s),
+                lower=np.maximum(
+                    PIPER_LOWER_RAD,
+                    [limit.minimum for limit in schema.joint_limits[self._joint_slice(side)]],
+                ),
+                upper=np.minimum(
+                    PIPER_UPPER_RAD,
+                    [limit.maximum for limit in schema.joint_limits[self._joint_slice(side)]],
+                ),
+                max_speed_rad_s=np.minimum(
+                    self.settings.joint_speed_cap_rad_s,
+                    [limit.max_speed for limit in schema.joint_limits[self._joint_slice(side)]],
+                ),
                 nominal_rate_hz=self.settings.tracking_rate_hz,
-                settings=DlsSettings(),
+                settings=dls_settings,
             )
             for side in ("left", "right")
         }
@@ -84,6 +102,10 @@ class VrTeleoperator:
         """Synchronize from measured robot state before beginning an epoch."""
         state = self.schema.validate_action(values)
         self._state = state.copy()
+        for side, solver in self._solvers.items():
+            # Keep the measured working posture as this epoch's regularization
+            # reference so an unmoved controller does not pull toward joint zero.
+            solver.rest = state[self._joint_slice(side)].copy()
         self._anchors.clear()
         self._last_timestamp_ns = None
         self._filter.reset(state)
@@ -121,8 +143,14 @@ class VrTeleoperator:
         if now_ns - frame.timestamp_ns > int(self.settings.tracking_timeout_s * 1_000_000_000):
             self.disengage()
             return None
+        if self._last_timestamp_ns is not None and frame.timestamp_ns <= self._last_timestamp_ns:
+            return None
         previous_ns = self._last_timestamp_ns or frame.timestamp_ns
         dt_s = max(0.0, (frame.timestamp_ns - previous_ns) / 1_000_000_000)
+        dt_s = min(
+            dt_s,
+            self._solvers["left"].settings.max_step_multiplier / self.settings.tracking_rate_hz,
+        )
         rotation = np.asarray(self.settings.source_to_robot_rotation, dtype=np.float64)
         rotation = rotation.reshape(3, 3)
         next_state = self._state.copy()

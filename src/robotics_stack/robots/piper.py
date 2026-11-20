@@ -6,6 +6,7 @@ driver sees them and keeps both arms at their measured state when paused.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,7 @@ from robotics_stack.robots.registry import register_robot_driver
 
 RAD_TO_MDEG = 1000.0 * 180.0 / np.pi
 MDEG_TO_RAD = 1.0 / RAD_TO_MDEG
+PIPER_HOME_ACTION = (0.0, 0.0, 0.0, 0.0, float(np.deg2rad(25)), 0.0, 0.0) * 2
 JOINT_SIGNS = np.asarray((-1.0, 1.0, 1.0, -1.0, 1.0, -1.0), dtype=np.float64)
 # Piper reports these limits in tenths of a degree.  A successfully read
 # per-motor limit always supersedes this documented firmware fallback.
@@ -30,6 +32,7 @@ DEFAULT_JOINT_LIMITS_TENTH_DEG = (
     (-700, 700),
     (-1200, 1200),
 )
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -43,7 +46,7 @@ class PiperConnection:
     feedback_timeout_s: float = 1.5
     startup_speed_percent: int = 10
     motion_speed_percent: int = 100
-    disable_on_disconnect: bool = True
+    disable_on_disconnect: bool = False
     sdk_interface: str = "v2"
     action_space: str = "radians"
     gripper_calibration_file: str | None = None
@@ -79,6 +82,7 @@ class _Arm:
         self.side = side
         self.config = config
         self.sdk = interfaces[config.sdk_interface.lower()](port)
+        self._port_open = False
         self.gripper_min = config.gripper_min_microm
         self.gripper_max = config.gripper_max_microm
         self.joint_min_deg = np.asarray(
@@ -94,15 +98,15 @@ class _Arm:
 
     def connect(self) -> None:
         self.sdk.ConnectPort()
+        self._port_open = True
         try:
             self._wait_for_feedback()
             measured = self._physical_joints()
             if self._requires_reset():
-                reset = getattr(self.sdk, "ResetPiper", None)
-                if reset is not None:
-                    reset()
-                    time.sleep(0.1)
-                    self._wait_for_feedback()
+                raise RuntimeError(
+                    f"{self.port}: controller needs recovery; automatic ResetPiper is disabled "
+                    "because it releases motor torque. Support the arm and recover explicitly."
+                )
 
             # Piper can retain a target from a previous process.  Seed its
             # controller with measured joints before changing mode or enabling
@@ -190,12 +194,25 @@ class _Arm:
             raise RuntimeError(f"{self.port}: invalid Piper gripper range")
 
     def close(self) -> None:
+        if not self._port_open:
+            return
         try:
             if self.config.disable_on_disconnect:
                 disable = getattr(self.sdk, "DisablePiper", None)
                 if disable is not None:
                     disable()
+            else:
+                try:
+                    message = self.sdk.GetArmJointMsgs()
+                    if float(getattr(message, "time_stamp", 0.0)) <= 0:
+                        raise RuntimeError("no measured joint feedback")
+                    self._send_joints(self._physical_joints())
+                except Exception:
+                    logger.exception(
+                        "%s: could not latch measured hold; motors remain enabled", self.port
+                    )
         finally:
+            self._port_open = False
             close = getattr(self.sdk, "DisconnectPort", None)
             if close is not None:
                 close()
@@ -275,14 +292,28 @@ class BiPiper:
             try:
                 arm.close()
             except Exception:
-                pass
+                logger.exception("Failed to close Piper arm %s", arm.port)
 
     def observation(self) -> tuple[float, ...]:
         if not self.connected:
             raise RuntimeError("Piper is disconnected")
-        return tuple(
-            [*self.left.joints(), self.left.gripper(), *self.right.joints(), self.right.gripper()]
+        values = np.asarray(
+            [*self.left.joints(), self.left.gripper(), *self.right.joints(), self.right.gripper()],
+            dtype=np.float64,
         )
+        if self.connection.action_space == "radians":
+            # Encoder readback can cross a nominal stop slightly (e.g. -0.117 deg
+            # at a zero stop). Bound only that feedback within 0.25 degrees;
+            # policy targets still pass the original strict validation.
+            tolerance = float(np.deg2rad(0.25))
+            for index, limit in enumerate(self.schema.joint_limits):
+                if index % 7 == 6:
+                    continue
+                value = values[index]
+                if limit.minimum - tolerance <= value <= limit.maximum + tolerance:
+                    values[index] = np.clip(value, limit.minimum, limit.maximum)
+            self.schema.validate_action(values)
+        return tuple(float(value) for value in values)
 
     def set_target(self, action: tuple[float, ...]) -> None:
         values = self.schema.validate_action(action)
@@ -293,7 +324,7 @@ class BiPiper:
         self.set_target(self.observation())
 
     def home(self) -> None:
-        self.set_target(tuple(0.0 for _ in range(14)))
+        self.set_target(PIPER_HOME_ACTION)
 
 
 def _build_bimanual_piper(schema: RobotSchema, options: dict[str, Any]) -> BiPiper:

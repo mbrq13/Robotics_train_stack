@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from robotics_stack.config.loaders import load_yaml
@@ -13,9 +14,14 @@ def test_offline_dream_preflight_accepts_the_committed_contract(tmp_path: Path) 
     root = Path(__file__).parents[1]
     source = root / "configs" / "deploy" / "dream1_piper.yaml"
     deployment = load_yaml(source)
-    deployment["arm_file"] = str(root / "assets" / "robots" / "piper" / "piper_arm.json")
-    # Physical confirmation is deliberately absent from the repository. This
-    # test exercises every static contract around that operator-only gate.
+    source_arm = root / "assets" / "robots" / "piper" / "piper_arm.json"
+    arm = json.loads(source_arm.read_text())
+    arm["urdf"] = str(source_arm.parent / arm["urdf"])
+    arm.pop("tcp_calibration", None)
+    test_arm = tmp_path / "arm.json"
+    test_arm.write_text(json.dumps(arm))
+    deployment["arm_file"] = str(test_arm)
+    # Exercise the unconfirmed contract independently of local calibration.
     deployment["require_tcp_confirmation"] = False
     test_config = tmp_path / "dream.yaml"
     test_config.write_text(yaml.safe_dump(deployment), encoding="utf-8")
@@ -32,7 +38,9 @@ def test_offline_dream_preflight_accepts_the_committed_contract(tmp_path: Path) 
     assert report.arm["tcp_confirmed"] is False
 
 
-def test_offline_preflight_accepts_one_physical_so100_arm(tmp_path: Path) -> None:
+def test_offline_preflight_accepts_one_physical_so100_arm(tmp_path: Path, monkeypatch) -> None:
+    # Deployment profiles must not inherit developer-local Dream overrides.
+    monkeypatch.chdir(tmp_path)
     root = Path(__file__).parents[1]
     robot = load_yaml(root / "configs" / "robots" / "so100_single_dream1.yaml")
     calibration = tmp_path / "so100.json"
@@ -84,3 +92,25 @@ def test_offline_preflight_accepts_one_physical_so100_arm(tmp_path: Path) -> Non
         "commanded_side": "right",
         "calibration_file": str(calibration),
     }
+
+
+@pytest.mark.parametrize("bitrate", [1_000_000, 500_000, None])
+def test_can_preflight_reads_iproute2_bittiming(monkeypatch, bitrate) -> None:
+    from types import SimpleNamespace
+
+    from robotics_stack.contracts import ContractError
+    from robotics_stack.evaluation.dream_preflight import _check_can_interface
+
+    link = {
+        "flags": ["NOARP", "UP", "LOWER_UP"],
+        "linkinfo": {"info_data": {"bittiming": {"bitrate": bitrate}}},
+    }
+    monkeypatch.setattr(
+        "robotics_stack.evaluation.dream_preflight.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(stdout=json.dumps([link])),
+    )
+    if bitrate == 1_000_000:
+        _check_can_interface("can0")
+    else:
+        with pytest.raises(ContractError, match="expected 1000000"):
+            _check_can_interface("can0")

@@ -32,7 +32,8 @@ def _check_can_interface(port: str) -> None:
         raise ContractError(f"cannot inspect CAN interface {port}: {exc}") from exc
     if "UP" not in link.get("flags", []):
         raise ContractError(f"CAN interface {port} is not UP")
-    bitrate = link.get("linkinfo", {}).get("info_data", {}).get("bitrate")
+    info = link.get("linkinfo", {}).get("info_data", {})
+    bitrate = info.get("bittiming", {}).get("bitrate", info.get("bitrate"))
     if bitrate != 1_000_000:
         raise ContractError(f"CAN interface {port} bitrate is {bitrate}, expected 1000000")
 

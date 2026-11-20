@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import time
+from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 
@@ -46,11 +47,14 @@ def _station(args: argparse.Namespace) -> None:
     station.connect()
     try:
         asyncio.run(_run_station_services(station, station_cfg, args.no_ui))
+    except KeyboardInterrupt:
+        pass
     finally:
         station.disconnect()
 
 
 async def _run_station_services(station: RobotStation, config: dict, no_ui: bool) -> None:
+    server = None
     tasks = [
         asyncio.create_task(
             station.serve(config.get("host", "0.0.0.0"), int(config.get("port", 8765)))
@@ -63,7 +67,12 @@ async def _run_station_services(station: RobotStation, config: dict, no_ui: bool
             raise RuntimeError("install the ui extra or pass --no-ui") from exc
         from robotics_stack.ui.app import create_app
 
-        server = uvicorn.Server(
+        class StationServer(uvicorn.Server):
+            def capture_signals(self):
+                # asyncio.run owns SIGINT and cancels the station and UI together.
+                return nullcontext()
+
+        server = StationServer(
             uvicorn.Config(
                 create_app(station),
                 host=config.get("ui_host", "0.0.0.0"),
@@ -72,7 +81,15 @@ async def _run_station_services(station: RobotStation, config: dict, no_ui: bool
             )
         )
         tasks.append(asyncio.create_task(server.serve()))
-    await asyncio.gather(*tasks)
+    try:
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            task.result()
+    finally:
+        if server is not None:
+            server.should_exit = True
+        tasks[0].cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def _train(args: argparse.Namespace) -> None:
@@ -155,6 +172,7 @@ def _teleop(args: argparse.Namespace) -> None:
 
     from robotics_stack.datasets.capture import CaptureCoordinator, CaptureRequest, CaptureSettings
     from robotics_stack.datasets.writer import LeRobotEpisodeRecorder, LeRobotRecordingConfig
+    from robotics_stack.kinematics.dls import DlsSettings
     from robotics_stack.teleoperators.guidance.tempo import TargetBridgeSettings
     from robotics_stack.teleoperators.vr.guided import GuidedVrHandoff
     from robotics_stack.teleoperators.vr.session import VrTeleoperator, VrTeleoperatorSettings
@@ -175,6 +193,13 @@ def _teleop(args: argparse.Namespace) -> None:
     headset = dict(config.get("headset", {}))
     motion = dict(config.get("motion", {}))
     bridge = dict(config.get("bridge", {}))
+    ik = dict(config.get("ik", {}))
+    if set(ik) - {"solver", "dls"}:
+        raise ValueError("teleoperation ik accepts only solver and dls")
+    if ik.get("solver", "dls") != "dls":
+        raise ValueError("Piper teleoperation ik.solver must be dls")
+    dls_settings = DlsSettings(**ik.get("dls", {}))
+    settings = VrTeleoperatorSettings(**motion)
     if str(headset.get("kind", "")) == "quest":
         provider = QuestTrackingClient(str(headset["host"]), port=int(headset.get("port", 65432)))
         provider.start()
@@ -195,8 +220,7 @@ def _teleop(args: argparse.Namespace) -> None:
         stream_rate_hz=float(station_cfg.get("stream_rate_hz", 100)),
         cameras=cameras,
     )
-    settings = VrTeleoperatorSettings(**motion)
-    teleoperator = VrTeleoperator(schema, settings=settings)
+    teleoperator = VrTeleoperator(schema, settings=settings, dls_settings=dls_settings)
     recorder: LeRobotEpisodeRecorder | None = None
     if args.record:
         recording = dict(config.get("recording", {}))
@@ -513,7 +537,10 @@ def _dream(args: argparse.Namespace) -> None:
         config.validate()
     if args.dry_run:
         config = replace(config, dry_run=True)
-    asyncio.run(run_dream_agent(config))
+    try:
+        asyncio.run(run_dream_agent(config))
+    except KeyboardInterrupt:
+        pass
 
 
 def _dream_replay(args: argparse.Namespace) -> None:

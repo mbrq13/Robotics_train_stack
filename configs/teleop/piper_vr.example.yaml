@@ -1,5 +1,14 @@
-# This profile contains operator-motion parameters, never policy parameters.
 robot_config: configs/robots/piper_bimanual.yaml
+ik:
+  solver: dls
+  dls:
+    base_damping: 0.05
+    singularity_damping: 0.15
+    singular_value_threshold: 0.05
+    rest_gain: 0.02
+    orientation_weight: 0.1
+    orientation_hold_rad: 2.2
+    max_step_multiplier: 2.0
 headset:
   # `quest` reads newline-delimited JSON from a companion app. `pico` loads
   # the optional XRoboToolkit SDK on the station machine.

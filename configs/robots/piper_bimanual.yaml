@@ -77,6 +77,7 @@ robot:
     gripper_max_microm: 70000
     gripper_effort: 1000
     enable_timeout_s: 10
+    disable_on_disconnect: false
     # Optional per-arm endpoint calibration.
     # gripper_calibration_file: /opt/robotics/piper_grippers.yaml
 
