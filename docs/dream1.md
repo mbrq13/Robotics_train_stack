@@ -52,19 +52,21 @@ prints the key itself.
 
 The two Piper CAN adapters must be mapped to the intended sides as `can0`
 (left) and `can1` (right), both UP at the fixed 1,000,000 bitrate. Verify the
-USB-to-side mapping before enabling either arm. `mu-stack` used USB bus-info
-`1-5:1.0` and `1-6:1.0` on its robot computer; inspect the current machine
-before using those values:
+USB-to-side mapping on the current machine before enabling either arm:
 
 ```bash
 ip -br link show type can
 sudo ethtool -i can0
 sudo ethtool -i can1
+bash scripts/activate_piper_can.sh --list
+# Replace these placeholders with the measured USB bus-info values:
 bash scripts/activate_piper_can.sh LEFT_USB_BUS_INFO RIGHT_USB_BUS_INFO
 ```
 
 The wrapper calls `piper_sdk/can_activate.sh` from this repository's `.venv`
-for each adapter and prints both final CAN links. It requires `ethtool` and
+for each adapter and verifies both final CAN links. It locates the installed
+shell script without importing Python. Use `sudo bash` when invoking the SDK
+script directly, as in the [Piper deployment guide](piper_dream1_deploy.md#can-cameras-and-preflight). It requires `ethtool` and
 `can-utils` installed on Ubuntu; it does not create a Python environment.
 Run `./install.sh station dream ui dev` first to install the SDK. If the
 interfaces are not yet named `can0` and `can1`, inspect their actual names with
@@ -107,9 +109,9 @@ Measure the physical support before motion. The `ik_region` lower z value of
 provide a complete table or inter-arm collision check. Check proposed paths
 against the physical workcell before permitting autonomous motion.
 
-The profile starts with `dry_run: true`. Change it to `false` only for the
-controlled-motion step after all physical checks. The `--dry-run` CLI flag
-always forces read-only inference.
+The committed profile starts with `dry_run: true` as a fail-closed default.
+For an approved physical deployment, retain the file default and set
+`RSTACK_DREAM_DRY_RUN=false` only in the worker terminal.
 
 ## 4. Confirm the Piper tool frame
 
@@ -161,7 +163,7 @@ lists a different public Dream-1 checkpoint,
 replace only `checkpoint` in `configs/deploy/dream1_piper.yaml` with the exact
 ID returned by the platform.
 
-## 6. Read-only rollout
+## 6. Optional offline replay
 
 Before using the robot computer, a LeRobot episode can be evaluated directly:
 
@@ -209,52 +211,42 @@ The comparison contains the original frame, the current 16:9 center crop and a
 checks only. Deployment must use per-camera measured fisheye intrinsics and
 distortion coefficients at the actual capture resolution.
 
-Place the arms in a collision-free working pose, clear the workcell, power the
-emergency stop and start the station:
+## 7. Physical policy deployment
+
+Place the arms in a collision-free working pose, clear the workcell, and keep
+the emergency stop accessible. In Terminal 1, start the station and open its
+interface at `http://127.0.0.1:8080`:
 
 ```bash
-rstack station --config configs/robots/piper_bimanual_dream1.yaml
+env -u PYTHONPATH rstack station \
+  --config configs/robots/piper_bimanual_dream1.yaml
 ```
 
-Open `http://127.0.0.1:8080`, inspect all three 16:9 policy frames and do not
-arm. In another terminal run:
+Verify all three policy camera views. In Terminal 2, start the physical worker;
+this explicitly overrides the committed `dry_run: true` default without editing
+the shared configuration file:
 
 ```bash
-rstack dream --config configs/deploy/dream1_piper.yaml --dry-run \
-  --task "pick up the red block and place it in the blue bowl"
+env -u PYTHONPATH RSTACK_DREAM_SOLVER=dls RSTACK_DREAM_DRY_RUN=false \
+  rstack dream --config configs/deploy/dream1_piper.yaml
 ```
 
-Read-only mode requests observations and Dream chunks but never sends an
-action message. Stop it with Ctrl+C after checking network and inference
-behavior.
-
-## 7. First controlled motion
-
-After physical checks, set `dry_run: false` in
-`configs/deploy/dream1_piper.yaml`, then restart the worker without `--dry-run`:
-
-```bash
-rstack dream --config configs/deploy/dream1_piper.yaml \
-  --task "pick up the red block and place it in the blue bowl"
-```
-
-In the UI, use `Validate`, then `Arm`, then `Start`. Keep a person at the
-physical emergency stop. `Hold / Pause` invalidates the active action session,
-empties useful policy authority and holds measured joints. A camera error,
-excessive camera skew, stale chunk, lost worker or empty action queue also
-causes a local hold.
+Wait for `Policy connected`. Enter the task in the UI and press Enter, then use
+`Validate`, `Arm`, and `Start`. Keep a person at the physical emergency stop.
+`Hold / Pause` invalidates the active action session, empties useful policy
+authority and holds measured joints. A camera error, excessive camera skew,
+stale chunk, lost worker or empty action queue also causes a local hold.
 
 Following the reference loop, a first successful reply after more than 60
 seconds stops the motion worker without sending its first action. Restart the
-worker and use Validate, Arm and Start again when the model is warm. Dry-run
-mode can continue warming the model without this motion-start restriction.
+worker and use Validate, Arm and Start again when the model is warm.
 Authentication, invalid configuration and non-retryable API errors stop the
 worker; transient errors honor the server's retry delay. An expired server
 session also stops this worker and requires another operator start.
 
-Stopping the station disables both Piper arms before closing CAN. Support the
-arms and clear the workspace before Ctrl+C or power removal; do not assume a
-process exit leaves motor torque enabled.
+The committed profile has `disable_on_disconnect: false`, so stopping the
+station does not release motor torque. Support the arms and clear the workspace
+before Ctrl+C or power removal; do not assume a process exit disables the arms.
 
 The initial profile is deliberately conservative: 20 Hz policy rows, 100 Hz
 bounded CAN streaming, 0.5 rad/s joint caps, a 20% Piper controller speed and

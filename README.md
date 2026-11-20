@@ -58,7 +58,7 @@ DREAM_API_KEY=dl_live_REPLACE_ME
 
 The hardware profile maps the left arm to `can0` and the right arm to `can1`,
 both at 1,000,000 bit/s. Verify the physical adapter mapping and firmware before
-enabling the arms; use the [Spanish CAN activation steps](docs/piper_dream1_deploy_es.md#3-identificar-y-activar-los-dos-adaptadores-can).
+enabling the arms; use the [Piper deployment guide](docs/piper_dream1_deploy.md#can-cameras-and-preflight).
 
 | Policy view | Capture | Model image | Processing |
 | --- | --- | --- | --- |
@@ -115,7 +115,7 @@ within reach. A first reply after more than 60 seconds ends the motion worker
 without sending its first action; restart the worker and start again once the
 model is warm. Authentication and non-retryable API errors also stop the worker.
 Closing the station disables motor torque: support the arms before shutdown.
-See the [Spanish step-by-step Piper guide](docs/piper_dream1_deploy_es.md) and
+See the [step-by-step Piper guide](docs/piper_dream1_deploy.md) and
 [Dream-1 deployment](docs/dream1.md) for the complete commissioning sequence
 and the differences between this hardware command path and the reference loop.
 
@@ -201,7 +201,10 @@ The documentation is organized into these connected documents:
   before a real rollout.
 - [Dream-1 deployment](docs/dream1.md): zero-shot Piper setup, credentials,
   cameras, preflight and first rollout.
-- [Piper Dream-1 paso a paso](docs/piper_dream1_deploy_es.md): instalación,
-  activación CAN, cámaras, verificación y despliegue en el computador del robot.
+- [Piper Dream-1 deployment](docs/piper_dream1_deploy.md): installation, CAN
+  activation, cameras, verification, and robot-computer deployment.
 - [Single-arm SO-100 deployment](docs/dream1_so100.md): one physical arm,
   serial calibration, dry-run inference and guarded first motion.
+
+See [IK configuration](docs/ik_configuration.md) to select the solver, model,
+and environment overrides.
