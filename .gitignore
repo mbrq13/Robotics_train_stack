@@ -7,3 +7,7 @@ artifacts/
 sessions/
 *.log
 outputs/
+
+.env
+.env.*
+!.env.example

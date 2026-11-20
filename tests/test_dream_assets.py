@@ -55,7 +55,7 @@ def test_official_client_extracts_only_the_six_arm_joints() -> None:
     document = json.loads((ASSETS / "piper_arm.json").read_text())
     chain, joints, _limits, speeds = arm_file._chain(
         (ASSETS / "piper_arm.urdf").read_bytes(),
-        document["base"], document["flange"], (), ASSETS / "piper_arm.json",
+        document["base"], document["flange"], ASSETS / "piper_arm.json",
     )
     assert joints == tuple(f"joint{i}" for i in range(1, 7))
     assert speeds == (0.5,) * 6

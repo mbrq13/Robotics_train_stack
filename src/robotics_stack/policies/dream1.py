@@ -1,6 +1,7 @@
 """Dream-1 zero-shot adapter for supported physical stations.
 
-Dream owns model inference, temporal image windows, chunk pacing and EEF IK.
+Dream owns model inference, temporal image windows and chunk pacing.
+EEF IK is selected explicitly between the local adapter and the SDK.
 This module owns the explicit conversion to each station contract and never
 imports a hardware driver.
 """
@@ -14,7 +15,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,7 @@ class Dream1Config:
     require_tcp_confirmation: bool = True
     dry_run: bool = False
     ik_solve: str = "traj"
+    dls: dict[str, float] | None = None
     ik_region: dict[str, Any] | None = None
     ik_keep_out: dict[str, Any] | None = None
 
@@ -75,6 +77,12 @@ class Dream1Config:
     def load(cls, path: str | Path) -> Dream1Config:
         source = Path(path).resolve()
         value = load_yaml(source)
+        unknown = set(value) - {field.name for field in fields(cls)}
+        if unknown:
+            raise ValueError(f"Unknown Dream configuration keys: {', '.join(sorted(unknown))}")
+        from robotics_stack.config.environment import dream_overrides
+
+        value.update(dream_overrides())
         arm_value = value.get("arm_file")
         arm_file = None if arm_value is None else Path(str(arm_value)).expanduser()
         if arm_file is not None and not arm_file.is_absolute():
@@ -107,6 +115,7 @@ class Dream1Config:
             require_tcp_confirmation=bool(value.get("require_tcp_confirmation", True)),
             dry_run=bool(value.get("dry_run", False)),
             ik_solve=str(value.get("ik_solve", "traj")),
+            dls=value.get("dls"),
             ik_region=value.get("ik_region"),
             ik_keep_out=value.get("ik_keep_out"),
         )
@@ -126,8 +135,14 @@ class Dream1Config:
             self.first_chunk_timeout_s,
         ) <= 0:
             raise ValueError("Dream-1 observation and action rates must be positive")
-        if self.ik_solve not in {"tick", "traj"}:
-            raise ValueError("Dream-1 ik_solve must be tick or traj")
+        if self.ik_solve not in {"tick", "traj", "dls"}:
+            raise ValueError("Dream-1 ik_solve must be tick, traj or dls")
+        if self.ik_solve == "dls" and self.mode != "piper_bimanual":
+            raise ValueError("DLS currently supports only Piper")
+        if self.dls is not None:
+            from robotics_stack.kinematics.dls import DlsSettings
+
+            DlsSettings(**self.dls)
         if self.mode not in {"piper_bimanual", "so100_single"}:
             raise ValueError("Dream-1 mode must be piper_bimanual or so100_single")
         if self.mode == "piper_bimanual" and self.arm_file is None:
@@ -262,6 +277,13 @@ def confirm_arm_tcp(path: Path) -> str:
     return digest
 
 
+def _load_dream_environment() -> None:
+    """Read the working directory's .env without overriding exported variables."""
+    from dotenv import load_dotenv
+
+    load_dotenv(dotenv_path=Path.cwd() / ".env", override=False)
+
+
 class Dream1Policy:
     """Small stateful facade over the official DreamClient."""
 
@@ -275,9 +297,16 @@ class Dream1Policy:
                 import dream
             except ImportError as exc:
                 raise RuntimeError("install the dream optional dependency to run Dream-1") from exc
+            _load_dream_environment()
             client = dream.DreamClient()
         self.config = config
         self.client = client
+        self._local_ik = None
+        self._measured_state = None
+        if config.ik_solve == "dls":
+            from robotics_stack.policies.dream_ik import DreamDls
+
+            self._local_ik = DreamDls(config)
         # Observation updates are intentionally allowed while inference runs: the
         # official client uses them to maintain its temporal window. Lifecycle
         # calls, however, must never reset/close a session during get_action().
@@ -333,7 +362,7 @@ class Dream1Policy:
                 "timeout_ms": self.config.timeout_ms,
                 "strict": True,
                 "robot": "other_embodiment",
-                "ik": ik,
+                **({"ik": ik} if self._local_ik is None else {}),
                 "embodiment": embodiment,
                 "obs_window": self.config.obs_window,
                 "obs_fps": self.config.obs_fps,
@@ -379,6 +408,9 @@ class Dream1Policy:
                 "state.left_grip": state[6:7],
                 "prompt": self.config.task,
             }
+        if self._local_ik is not None:
+            self._measured_state = state.copy()
+            payload = self._local_ik.observation(state, payload)
         self.client.set_observation(
             frames,
             payload,
@@ -398,7 +430,12 @@ class Dream1Policy:
                     raise ContractError("Dream-1 commanded anchor must be a 14D Piper action")
                 seam = {"q_r_chunk": row[7:13], "q_l_chunk": row[0:6]}
         with self._request_lock:
-            reply = self.client.get_action(commanded=seam)
+            measured = None if self._measured_state is None else self._measured_state.copy()
+            reply = self.client.get_action(commanded=seam if self._local_ik is None else None)
+            if self._local_ik is not None:
+                if measured is None:
+                    raise ContractError("DLS needs a measured observation before inference")
+                return self._local_ik.solve(reply, measured)
         try:
             right = np.asarray(reply["q_r_chunk"], dtype=np.float64)
             left = np.asarray(reply["q_l_chunk"], dtype=np.float64)
@@ -436,6 +473,10 @@ class Dream1Policy:
     def timing(self) -> dict[str, Any]:
         return dict(self.client.last_timing or {})
 
+    @property
+    def pacing_mode(self) -> str:
+        return str(getattr(self.client, "mode", "unknown"))
+
     def close(self) -> None:
         with self._request_lock:
             self.client.close()
@@ -447,6 +488,7 @@ def dream_api_preflight(config: Dream1Config) -> dict[str, Any]:
         import dream
     except ImportError as exc:
         raise RuntimeError("install the dream optional dependency to check DreamAPI") from exc
+    _load_dream_environment()
     client = dream.DreamClient()
     try:
         models = client.get_models()

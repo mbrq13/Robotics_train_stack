@@ -105,6 +105,7 @@ def test_tcp_confirmation_is_bound_to_arm_geometry(tmp_path: Path) -> None:
     urdf.write_bytes(source_urdf.read_bytes())
     document = json.loads(arm_file.read_text(encoding="utf-8"))
     document["urdf"] = urdf.name
+    document.pop("tcp_calibration", None)
     arm_file.write_text(json.dumps(document), encoding="utf-8")
 
     with pytest.raises(ContractError, match="TCP is not confirmed"):
@@ -198,3 +199,18 @@ def test_dream_policy_exposes_only_the_physical_so100_right_arm() -> None:
     assert client.commanded["q_r_chunk"].tolist() == pytest.approx(
         [0.1, -0.2, 0.3, -0.4, 0.5]
     )
+
+
+def test_dream_loads_local_env_without_overriding_exports(tmp_path, monkeypatch):
+    from robotics_stack.policies.dream1 import _load_dream_environment
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DREAM_API_KEY", raising=False)
+    (tmp_path / ".env").write_text('DREAM_API_KEY="test-local-key"\n')
+    _load_dream_environment()
+    import os
+
+    assert os.environ["DREAM_API_KEY"] == "test-local-key"
+    monkeypatch.setenv("DREAM_API_KEY", "test-exported-key")
+    _load_dream_environment()
+    assert os.environ["DREAM_API_KEY"] == "test-exported-key"

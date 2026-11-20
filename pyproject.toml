@@ -9,10 +9,14 @@ description = "Training and runtime tooling for policy-driven robotics."
 readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "MIT"}
-dependencies = ["numpy>=1.26", "PyYAML>=6.0"]
+dependencies = ["numpy>=1.26", "PyYAML>=6.0", "python-dotenv>=1.0"]
 
 [project.scripts]
 rstack = "robotics_stack.cli:main"
+rstack-measure-latency = "robotics_stack.tools.measure_policy_latency:main"
+rstack-preflight = "robotics_stack.tools.preflight_deployment:main"
+rstack-prepare-sim-replay = "robotics_stack.tools.prepare_sim_replay:main"
+rstack-preview-fisheye = "robotics_stack.tools.preview_fisheye_for_dream:main"
 
 [project.optional-dependencies]
 station = [
